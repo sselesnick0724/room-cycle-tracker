@@ -9,7 +9,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f4f6fb;
 h1,h2,h3,h4{margin:8px 0}
 .card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.06)}
 label{font-weight:600;display:block;margin-top:8px}
-select,input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
+select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 .room{border-top:1px solid #eee;padding-top:10px;margin-top:10px;cursor:pointer}
 .row{display:flex;gap:12px}
@@ -23,6 +23,7 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 .hidden{display:none}
 .back{background:#e5e7eb;color:#111;margin-bottom:12px}
 .disabled{opacity:.5;pointer-events:none}
+.tv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
 </style>
 </head>
 
@@ -64,7 +65,7 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <div class="card">
 <h3>Add Room</h3>
-<input id="roomName" placeholder="Room name / number">
+<input id="roomName" placeholder="Room name">
 <input id="plantCount" type="number" placeholder="Plant count">
 <label>Start Date</label>
 <input id="startDate" type="date">
@@ -95,27 +96,20 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <script>
 /* ---------------- DATA ---------------- */
-let store=JSON.parse(localStorage.getItem("RCT_FULL"))||{
+let store=JSON.parse(localStorage.getItem("RCT_FINAL"))||{
 facilities:{},
 completed:[],
 sops:{},
 activeSop:null
 };
-function save(){localStorage.setItem("RCT_FULL",JSON.stringify(store))}
+function save(){localStorage.setItem("RCT_FINAL",JSON.stringify(store))}
 
 /* ---------------- DEFAULT SOP ---------------- */
 if(!store.sops["True Leaf Fire"]){
-store.sops["True Leaf Fire"]={name:"True Leaf Fire",weeks:[
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
-{day:{t:74,rh:55,co2:800},night:{t:67,rh:40,co2:800}},
-{day:{t:74,rh:50,co2:400},night:{t:65,rh:35,co2:400}},
-{day:{t:74,rh:50,co2:400},night:{t:65,rh:35,co2:400}},
-{day:{t:74,rh:50,co2:400},night:{t:65,rh:35,co2:400}}
-]};
+store.sops["True Leaf Fire"]={name:"True Leaf Fire",weeks:Array.from({length:9},()=>({
+day:{t:82,rh:72,co2:1000},
+night:{t:78,rh:70,co2:1000}
+}))};
 store.activeSop="True Leaf Fire"; save();
 }
 
@@ -139,6 +133,12 @@ let c=(t-32)*5/9;
 let es=0.6108*Math.exp((17.27*c)/(c+237.3));
 return (es*(1-rh/100)).toFixed(2);
 }
+function status(actual,target){
+let d=Math.abs(actual-target);
+if(d<=2)return"green";
+if(d<=5)return"yellow";
+return"red";
+}
 
 /* ---------------- SOP EDITOR ---------------- */
 function toggleSopEditor(){
@@ -153,15 +153,29 @@ sop.weeks.forEach((w,i)=>{
 d.innerHTML+=`
 <h4>Week ${i+1}</h4>
 <div class="row">
-<div class="col target">Day: ${w.day.t}°F / ${w.day.rh}% / ${w.day.co2}ppm<br>VPD ${vpd(w.day.t,w.day.rh)}</div>
-<div class="col target">Night: ${w.night.t}°F / ${w.night.rh}% / ${w.night.co2}ppm<br>VPD ${vpd(w.night.t,w.night.rh)}</div>
+<div class="col target">
+Day<br>
+<input value="${w.day.t}" onchange="w.day.t=this.value">
+<input value="${w.day.rh}" onchange="w.day.rh=this.value">
+<input value="${w.day.co2}" onchange="w.day.co2=this.value">
+<div class="green">VPD ${vpd(w.day.t,w.day.rh)}</div>
+</div>
+<div class="col target">
+Night<br>
+<input value="${w.night.t}" onchange="w.night.t=this.value">
+<input value="${w.night.rh}" onchange="w.night.rh=this.value">
+<input value="${w.night.co2}" onchange="w.night.co2=this.value">
+<div class="green">VPD ${vpd(w.night.t,w.night.rh)}</div>
+</div>
 </div>`;
 });
 }
 function saveSOP(){
 let name=document.getElementById("sopName").value;
 store.sops[name]=JSON.parse(JSON.stringify(store.sops[sopSelect.value]));
-store.activeSop=name; save(); loadSops();
+store.activeSop=name;
+save(); loadSops();
+document.getElementById("sopEditor").classList.add("hidden");
 }
 
 /* ---------------- ADD ROOM ---------------- */
@@ -179,6 +193,7 @@ start,
 sop:JSON.parse(JSON.stringify(store.sops[sopSelect.value])),
 logs:{},
 yield:null,
+unit:null,
 closed:false
 });
 save(); renderRooms();
@@ -187,16 +202,20 @@ save(); renderRooms();
 /* ---------------- RENDER ROOMS ---------------- */
 function renderRooms(){
 let fac=facility.value;
-let cont=document.getElementById("rooms");cont.innerHTML="";
+let cont=document.getElementById("rooms");
+cont.innerHTML="";
+cont.className=mode.value==="tv"?"tv-grid":"";
 (store.facilities[fac]||[]).forEach((r,i)=>{
 let w=weekFrom(r.start);
 let dn=isDay(r.lights)?"day":"night";
 let t=r.sop.weeks[w-1][dn];
-let div=document.createElement("div");div.className="room";
-div.innerHTML=`<strong>${r.name}</strong>
+let div=document.createElement("div");
+div.className="room";
+div.innerHTML=`
+<strong>${r.name}</strong>
 <div class="small">Week ${w}, Day ${dayInWeek(r.start)} (${dn})</div>
-<div>${t.t}°F • ${t.rh}% • ${t.co2}ppm • VPD ${vpd(t.t,t.rh)}</div>`;
-div.onclick=()=>openRoom(fac,i);
+<div class="${status(t.t,t.t)}">${t.t}°F • ${t.rh}% • ${t.co2}ppm • VPD ${vpd(t.t,t.rh)}</div>`;
+if(mode.value!=="tv")div.onclick=()=>openRoom(fac,i);
 cont.appendChild(div);
 });
 }
@@ -215,8 +234,9 @@ d.innerHTML+=`
 <h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
 <div class="row">
 <div class="col target">
-Target: ${w[p].t}°F / ${w[p].rh}% / ${w[p].co2}ppm<br>
-VPD ${vpd(w[p].t,w[p].rh)}
+Target<br>
+${w[p].t}°F / ${w[p].rh}% / ${w[p].co2}ppm<br>
+<span class="green">VPD ${vpd(w[p].t,w[p].rh)}</span>
 </div>
 <div class="col actual">
 <input placeholder="Temp" value="${log.t||""}" onchange="log('${f}',${i},'${key}','t',this.value)">
@@ -228,12 +248,12 @@ VPD ${vpd(w[p].t,w[p].rh)}
 });
 });
 let w=weekFrom(r.start);
-let btnClass=w>=6?"":"disabled";
+let disabled=w<6?"disabled":"";
 d.innerHTML+=`
-<div class="card ${btnClass}">
-<h3>Cycle Complete</h3>
-<input placeholder="Yield per plant" onchange="rYield(this.value)">
-<select id="yUnit"><option>lbs</option><option>grams</option></select>
+<div class="card ${disabled}">
+<h3>Cycle Complete – Save Data</h3>
+<input placeholder="Yield per plant">
+<select><option>lbs</option><option>grams</option></select>
 <button onclick="complete('${f}',${i})">Save Cycle</button>
 </div>`;
 }
@@ -245,11 +265,9 @@ store.facilities[f][i].logs[k][field]=val;
 store.facilities[f][i].logs[k].ts=new Date().toISOString();
 save();
 }
-function rYield(v){window._yield=v}
 function complete(f,i){
 let r=store.facilities[f][i];
 if(weekFrom(r.start)<6)return alert("Available after Week 6");
-r.yield=window._yield||null;
 store.completed.push(r);
 store.facilities[f].splice(i,1);
 save(); back(); renderCompleted();
@@ -257,7 +275,7 @@ save(); back(); renderCompleted();
 function renderCompleted(){
 let d=document.getElementById("completed");d.innerHTML="";
 store.completed.forEach(r=>{
-d.innerHTML+=`<div class="room"><strong>${r.name}</strong> – Yield ${r.yield}</div>`;
+d.innerHTML+=`<div class="room"><strong>${r.name}</strong> – Completed</div>`;
 });
 }
 
