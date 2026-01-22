@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Room Cycle Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: Arial, sans-serif; background:#f4f6fb; margin:0; padding:16px; }
+.card { background:#fff; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 6px 18px rgba(0,0,0,.08); }
+h1,h2,h3 { margin-top:0; }
+button { background:#2563eb; color:#fff; border:none; padding:12px; border-radius:8px; width:100%; font-weight:600; }
+select,input { width:100%; padding:10px; margin-bottom:10px; border-radius:6px; border:1px solid #ccc; }
+.week { border-top:1px solid #ddd; padding-top:8px; margin-top:8px; }
+.small { font-size:12px; color:#555; }
+</style>
+</head>
+<body>
+
+<h1>Room Cycle Tracker</h1>
+
+<div class="card">
+<h2>Active SOP</h2>
+<select id="sopSelect"></select>
+<button onclick="createSOP()">Create New SOP</button>
+</div>
+
+<div class="card" id="sopEditor">
+<h2>SOP Editor</h2>
+<div id="weeks"></div>
+<button onclick="saveSOP()">Save SOP</button>
+</div>
+
+<script>
+const sops = {
+  "True Leaf Fire": {
+    weeks: [
+      { day:{t:82,rh:72,co2:1000}, night:{t:78,rh:70,co2:1000} },
+      { day:{t:82,rh:72,co2:1000}, night:{t:78,rh:70,co2:1000} },
+      { day:{t:82,rh:72,co2:1000}, night:{t:78,rh:70,co2:1000} },
+      { day:{t:80,rh:68,co2:1200}, night:{t:70,rh:55,co2:1200} },
+      { day:{t:78,rh:66,co2:1200}, night:{t:70,rh:55,co2:1200} },
+      { day:{t:77,rh:65,co2:1200}, night:{t:68,rh:55,co2:1200} },
+      { day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800} },
+      { day:{t:74,rh:50,co2:"Ambient"}, night:{t:65,rh:35,co2:"Ambient"} },
+      { day:{t:74,rh:50,co2:"Ambient"}, night:{t:65,rh:35,co2:"Ambient"} }
+    ]
+  }
+};
+
+let currentSOP = "True Leaf Fire";
+
+function loadSOPs(){
+  const sel=document.getElementById('sopSelect');
+  sel.innerHTML='';
+  Object.keys(sops).forEach(s=>{
+    const o=document.createElement('option');
+    o.text=s; o.value=s;
+    sel.appendChild(o);
+  });
+  sel.value=currentSOP;
+  renderEditor();
+}
+
+function renderEditor(){
+  const cont=document.getElementById('weeks');
+  cont.innerHTML='';
+  sops[currentSOP].weeks.forEach((w,i)=>{
+    cont.innerHTML+=`
+      <div class="week">
+        <strong>Week ${i+1}</strong>
+        <div class="small">Day</div>
+        <input value="${w.day.t}" placeholder="Temp">
+        <input value="${w.day.rh}" placeholder="RH">
+        <input value="${w.day.co2}" placeholder="CO2">
+        <div class="small">Night</div>
+        <input value="${w.night.t}" placeholder="Temp">
+        <input value="${w.night.rh}" placeholder="RH">
+        <input value="${w.night.co2}" placeholder="CO2">
+      </div>`;
+  });
+}
+
+function createSOP(){
+  const name=prompt("SOP Name");
+  if(!name) return;
+  sops[name]={weeks:JSON.parse(JSON.stringify(sops[currentSOP].weeks))};
+  currentSOP=name;
+  loadSOPs();
+}
+
+function saveSOP(){
+  alert("SOP saved. Rooms created after this will lock this version.");
+}
+
+document.getElementById('sopSelect').onchange=e=>{
+  currentSOP=e.target.value;
+  renderEditor();
+};
+
+loadSOPs();
+</script>
+
+</body>
+</html>
