@@ -3,260 +3,181 @@
 <head>
 <meta charset="UTF-8">
 <title>Room Cycle Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{
-  font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto;
-  background:#f4f6fb;
-  margin:0;
-  padding:16px;
-}
-h1{margin-top:0}
-.card{
-  background:#fff;
-  border-radius:12px;
-  padding:16px;
-  margin-bottom:16px;
-  box-shadow:0 6px 16px rgba(0,0,0,.08);
-}
-button,select,input{
-  width:100%;
-  padding:10px;
-  margin-top:8px;
-  font-size:16px;
-}
-button{
-  background:#2563eb;
-  color:#fff;
-  border:none;
-  border-radius:8px;
-}
-.back{
-  background:#6b7280;
-}
-.row{
-  display:flex;
-  gap:12px;
-  flex-wrap:wrap;
-}
-.col{
-  flex:1;
-  min-width:140px;
-}
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto;background:#f4f6fb;margin:0;padding:16px}
+h1{margin:0 0 12px}
+.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 6px 18px rgba(0,0,0,.08)}
+button,input,select{width:100%;padding:10px;margin-top:8px;font-size:16px}
+button{background:#2563eb;color:#fff;border:none;border-radius:8px}
+.back{background:#6b7280}
 .temp{color:#2563eb;font-weight:600}
 .rh{color:#dc2626;font-weight:600}
 .vpd-good{color:#16a34a;font-weight:700}
 .vpd-warn{color:#ca8a04;font-weight:700}
 .vpd-bad{color:#dc2626;font-weight:700}
-.small{font-size:12px;color:#6b7280;margin-top:4px}
+.locked input{background:#f3f4f6}
+.small{font-size:12px;color:#6b7280}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.col{flex:1;min-width:140px}
+.tab{display:inline-block;margin-right:12px;font-weight:600;cursor:pointer}
+.tab.active{text-decoration:underline}
 </style>
 </head>
 
 <body>
 <h1>Room Cycle Tracker</h1>
-
 <div id="app"></div>
 
 <script>
 const state={
-  view:"home",
-  activeRoom:null,
-  facility:"True Leaf",
-  sops:{
-    "True Leaf Fire":{
-      weeks:[
-        [82,72,1000,78,70,1000],
-        [82,72,1000,78,70,1000],
-        [82,72,1000,78,70,1000],
-        [80,68,1200,70,55,1200],
-        [78,66,1200,70,55,1200],
-        [77,65,1200,68,55,1200],
-        [74,55,800,67,40,800],
-        [74,50,"Ambient",65,35,"Ambient"],
-        [74,50,"Ambient",65,35,"Ambient"]
-      ],
-      vpd:[1.0,1.4]
-    }
-  },
-  rooms:[]
+ view:"home",
+ activeRoom:null,
+ rooms:[],
+ sops:{
+  "True Leaf Fire":{
+   vpd:[1.0,1.4],
+   weeks:[
+    [82,72,1000,78,70,1000],
+    [82,72,1000,78,70,1000],
+    [82,72,1000,78,70,1000],
+    [80,68,1200,70,55,1200],
+    [78,66,1200,70,55,1200],
+    [77,65,1200,68,55,1200],
+    [74,55,800,67,40,800],
+    [74,50,"Ambient",65,35,"Ambient"],
+    [74,50,"Ambient",65,35,"Ambient"]
+   ]
+  }
+ }
 };
 
-function save(){localStorage.setItem("rct",JSON.stringify(state))}
-function load(){
-  const d=localStorage.getItem("rct");
-  if(d) Object.assign(state,JSON.parse(d));
-}
+const save=()=>localStorage.setItem("rct",JSON.stringify(state));
+const load=()=>{const d=localStorage.getItem("rct");if(d)Object.assign(state,JSON.parse(d))};
 load();
 
 function calcVPD(t,rh){
-  const tc=(t-32)*5/9;
-  const svp=0.6108*Math.exp((17.27*tc)/(tc+237.3));
-  const avp=svp*(rh/100);
-  return +(svp-avp).toFixed(2);
+ const tc=(t-32)*5/9;
+ const svp=0.6108*Math.exp((17.27*tc)/(tc+237.3));
+ return +(svp-(svp*(rh/100))).toFixed(2);
 }
-function vpdClass(v,min,max){
-  if(v>=min&&v<=max) return "vpd-good";
-  if(v>=min-0.2&&v<=max+0.2) return "vpd-warn";
-  return "vpd-bad";
+function vpdClass(v,[min,max]){
+ if(v>=min&&v<=max)return"vpd-good";
+ if(v>=min-0.2&&v<=max+0.2)return"vpd-warn";
+ return"vpd-bad";
 }
-
-function currentWeek(room){
-  const start=new Date(room.start);
-  const now=new Date();
-  return Math.max(1,Math.floor((now-start)/86400000/7)+1);
-}
-function currentDay(room){
-  const start=new Date(room.start);
-  const now=new Date();
-  return Math.max(1,Math.floor((now-start)/86400000)%7+1);
+function weekDay(room){
+ const d=Math.floor((Date.now()-new Date(room.start))/86400000);
+ return {week:Math.floor(d/7)+1,day:(d%7)+1};
 }
 
 function home(){
-  let html=`
-  <div class="card">
-    <b>Facility</b>
-    <select onchange="state.facility=this.value;save();render()">
-      <option>True Leaf</option>
-    </select>
-  </div>
+ const active=state.rooms.filter(r=>!r.completed);
+ const done=state.rooms.filter(r=>r.completed);
+ document.getElementById("app").innerHTML=`
+ <div class="card">
+  <b>Add Room</b>
+  <input id="rn" placeholder="Room name">
+  <input id="rp" type="number" placeholder="Plant count">
+  <input id="rs" type="date">
+  <button onclick="addRoom()">Add Room</button>
+ </div>
 
-  <div class="card">
-    <b>Active SOP</b>
-    <select id="sopSelect"></select>
-    <button onclick="alert('SOP editor kept simple for stability')">Create / Edit SOP</button>
-  </div>
+ <div class="card">
+  <span class="tab active">Active</span>
+  <span class="tab">Completed</span>
+  ${active.map(r=>`
+   <div style="margin-top:12px">
+    <b>${r.name}</b><br>
+    SOP: ${r.sop}<br>
+    Week ${weekDay(r).week} Day ${weekDay(r).day}
+    <button onclick="openRoom(${r.id})">View Room</button>
+   </div>`).join("")}
+ </div>
 
-  <div class="card">
-    <b>Add Room</b>
-    <input id="roomName" placeholder="Room name">
-    <input id="plants" type="number" placeholder="Plant count">
-    <input id="startDate" type="date">
-    <button onclick="addRoom()">Add Room</button>
-  </div>
-
-  <div class="card">
-    <b>Rooms</b>
-    ${state.rooms.map(r=>{
-      return `
-      <div style="margin-bottom:12px">
-        <b>${r.name}</b><br>
-        SOP: ${r.sop}<br>
-        Plants: ${r.plants}<br>
-        Week ${currentWeek(r)} Day ${currentDay(r)}
-        <button onclick="openRoom(${r.id})">View Room</button>
-      </div>`;
-    }).join("")}
-  </div>`;
-  document.getElementById("app").innerHTML=html;
-
-  const sel=document.getElementById("sopSelect");
-  Object.keys(state.sops).forEach(s=>{
-    const o=document.createElement("option");
-    o.textContent=s;
-    sel.appendChild(o);
-  });
+ ${done.length?`
+ <div class="card">
+  <b>Completed Rooms</b>
+  ${done.map(r=>`<div>${r.name}</div>`).join("")}
+ </div>`:""}
+ `;
 }
 
 function addRoom(){
-  const n=document.getElementById("roomName").value;
-  const p=document.getElementById("plants").value;
-  const d=document.getElementById("startDate").value;
-  if(!n||!p||!d){alert("Missing fields");return}
-  state.rooms.push({
-    id:Date.now(),
-    name:n,
-    plants:p,
-    start:d,
-    sop:document.getElementById("sopSelect").value,
-    logs:{}
-  });
-  save();render();
+ const r={
+  id:Date.now(),
+  name:rn.value,
+  plants:rp.value,
+  start:rs.value,
+  sop:"True Leaf Fire",
+  logs:{},
+  completed:false
+ };
+ state.rooms.push(r);save();home();
 }
 
-function openRoom(id){
-  state.activeRoom=id;
-  state.view="room";
-  render();
+function openRoom(id){state.activeRoom=id;state.view="room";render()}
+
+function log(r,k,f,v){
+ r.logs[k]=r.logs[k]||{locked:false};
+ if(!r.logs[k].locked){
+  r.logs[k][f]=v;
+  r.logs[k].vpd=(r.logs[k].t&&r.logs[k].h)?calcVPD(r.logs[k].t,r.logs[k].h):null;
+ }
+ save();
 }
+
+function saveLog(r,k){
+ r.logs[k].locked=true;
+ r.logs[k].time=new Date().toLocaleString();
+ save();render();
+}
+function editLog(r,k){r.logs[k].locked=false;save();render()}
 
 function roomView(){
-  const r=state.rooms.find(x=>x.id===state.activeRoom);
-  const sop=state.sops[r.sop];
-  const w=currentWeek(r);
+ const r=state.rooms.find(x=>x.id===state.activeRoom);
+ const sop=state.sops[r.sop];
+ const wd=weekDay(r);
+ let html=`<button class="back" onclick="state.view='home';render()">← Back</button>
+ <h2>${r.name} — Week ${wd.week} Day ${wd.day}</h2>`;
 
-  let html=`
-  <button class="back" onclick="state.view='home';render()">← Back</button>
-  <h2>${r.name} — Week ${w} Day ${currentDay(r)}</h2>`;
-
-  sop.weeks.forEach((wk,i)=>{
-    const [dt,dr,dc,nt,nr,nc]=wk;
-    const vpdD=calcVPD(dt,dr);
-    const vpdN=calcVPD(nt,nr);
-
-    html+=`
-    <div class="card">
-      <b>Week ${i+1}</b>
-
-      <div class="row">
-        <div class="col">
-          <b>DAY Target</b><br>
-          <span class="temp">${dt}°F</span> /
-          <span class="rh">${dr}%</span> /
-          ${dc} ppm<br>
-          <span class="${vpdClass(vpdD,sop.vpd[0],sop.vpd[1])}">
-            VPD ${vpdD}
-          </span>
-        </div>
-
-        <div class="col">
-          <input placeholder="Temp °F"
-            oninput="log(${r.id},'${i}-d','t',this.value)">
-          <input placeholder="RH %"
-            oninput="log(${r.id},'${i}-d','h',this.value)">
-          <input placeholder="CO₂ ppm"
-            oninput="log(${r.id},'${i}-d','c',this.value)">
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="col">
-          <b>NIGHT Target</b><br>
-          <span class="temp">${nt}°F</span> /
-          <span class="rh">${nr}%</span> /
-          ${nc} ppm<br>
-          <span class="${vpdClass(vpdN,sop.vpd[0],sop.vpd[1])}">
-            VPD ${vpdN}
-          </span>
-        </div>
-
-        <div class="col">
-          <input placeholder="Temp °F"
-            oninput="log(${r.id},'${i}-n','t',this.value)">
-          <input placeholder="RH %"
-            oninput="log(${r.id},'${i}-n','h',this.value)">
-          <input placeholder="CO₂ ppm"
-            oninput="log(${r.id},'${i}-n','c',this.value)">
-        </div>
-      </div>
-    </div>`;
+ sop.weeks.forEach((w,i)=>{
+  const [dt,dr,dc,nt,nr,nc]=w;
+  ["d","n"].forEach(p=>{
+   const key=`${i}-${p}`;
+   const logd=r.logs[key]||{};
+   const locked=logd.locked?"locked":"";
+   const target=p==="d"?[dt,dr,dc]:[nt,nr,nc];
+   const vpdT=calcVPD(target[0],target[1]);
+   html+=`
+   <div class="card ${locked}">
+    <b>Week ${i+1} ${p==="d"?"DAY":"NIGHT"}</b>
+    <div>
+     <span class="temp">${target[0]}°F</span> /
+     <span class="rh">${target[1]}%</span> /
+     ${target[2]} ppm<br>
+     <span class="${vpdClass(vpdT,sop.vpd)}">VPD ${vpdT}</span>
+    </div>
+    <input value="${logd.t||""}" placeholder="Temp °F" ${locked?"disabled":""}
+     oninput="log(r,'${key}','t',this.value)">
+    <input value="${logd.h||""}" placeholder="RH %" ${locked?"disabled":""}
+     oninput="log(r,'${key}','h',this.value)">
+    <input value="${logd.c||""}" placeholder="CO₂ ppm" ${locked?"disabled":""}
+     oninput="log(r,'${key}','c',this.value)">
+    ${logd.vpd?`<div class="${vpdClass(logd.vpd,sop.vpd)}">Actual VPD ${logd.vpd}</div>`:""}
+    ${locked?`
+     <div class="small">Saved ${logd.time}</div>
+     <button onclick="editLog(r,'${key}')">Edit</button>`:
+     `<button onclick="saveLog(r,'${key}')">Save</button>`}
+   </div>`;
   });
+ });
 
-  document.getElementById("app").innerHTML=html;
+ html+=wd.week>=6?`<button onclick="r.completed=true;save();render()">Cycle Complete</button>`:"";
+ document.getElementById("app").innerHTML=html;
 }
 
-function log(id,key,f,val){
-  const r=state.rooms.find(x=>x.id===id);
-  r.logs[key]=r.logs[key]||{};
-  r.logs[key][f]=val;
-  r.logs[key].time=new Date().toLocaleString();
-  save();
-}
-
-function render(){
-  if(state.view==="home") home();
-  else roomView();
-}
+function render(){state.view==="home"?home():roomView()}
 render();
 </script>
 </body>
