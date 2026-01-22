@@ -88,9 +88,11 @@ button.secondary{background:#374151}
 </div>
 
 <script>
+/* -------------------- STORAGE -------------------- */
 let store=JSON.parse(localStorage.getItem("RCT_PROD"))||{facilities:{},sops:{},activeSop:null};
 function save(){localStorage.setItem("RCT_PROD",JSON.stringify(store))}
 
+/* -------------------- VPD -------------------- */
 function calcVPD(tF,rh){
   let c=(tF-32)*5/9;
   let es=0.6108*Math.exp((17.27*c)/(c+237.3));
@@ -103,7 +105,7 @@ function vpdClass(actual,target){
   return"vpd-red";
 }
 
-/* ---------- DEFAULT SOP ---------- */
+/* -------------------- DEFAULT SOP -------------------- */
 if(!store.sops["True Leaf Fire"]){
 store.sops["True Leaf Fire"]={
 name:"True Leaf Fire",
@@ -122,7 +124,7 @@ store.activeSop="True Leaf Fire";
 save();
 }
 
-/* ---------- SOP UI ---------- */
+/* -------------------- SOP UI -------------------- */
 const sopSelect=document.getElementById("sopSelect");
 function loadSops(){
 sopSelect.innerHTML="";
@@ -135,7 +137,52 @@ sopSelect.value=store.activeSop;
 }
 loadSops();
 
-/* ---------- ROOMS ---------- */
+function toggleSopEditor(){
+document.getElementById("sopEditor").classList.toggle("hidden");
+renderSopEditor();
+}
+
+function updateSopVPD(vpdId,tId,rhId){
+let t=document.getElementById(tId).value;
+let rh=document.getElementById(rhId).value;
+document.getElementById(vpdId).textContent=t&&rh?`VPD ${calcVPD(t,rh)}`:"VPD —";
+}
+
+function renderSopEditor(){
+let sop=store.sops[store.activeSop];
+document.getElementById("sopName").value=sop.name;
+let d=document.getElementById("sopWeeks"); d.innerHTML="";
+sop.weeks.forEach((w,i)=>{
+d.innerHTML+=`
+<h4>Week ${i+1}</h4>
+<div class="row">
+<div class="col target">
+<strong>Day</strong>
+<input id="dt${i}" value="${w.day.t}" onchange="w.day.t=this.value;updateSopVPD('dv${i}','dt${i}','dr${i}')">
+<input id="dr${i}" value="${w.day.rh}" onchange="w.day.rh=this.value;updateSopVPD('dv${i}','dt${i}','dr${i}')">
+<input value="${w.day.co2}" onchange="w.day.co2=this.value">
+<div id="dv${i}" class="vpd-green">VPD ${calcVPD(w.day.t,w.day.rh)}</div>
+</div>
+<div class="col target">
+<strong>Night</strong>
+<input id="nt${i}" value="${w.night.t}" onchange="w.night.t=this.value;updateSopVPD('nv${i}','nt${i}','nr${i}')">
+<input id="nr${i}" value="${w.night.rh}" onchange="w.night.rh=this.value;updateSopVPD('nv${i}','nt${i}','nr${i}')">
+<input value="${w.night.co2}" onchange="w.night.co2=this.value">
+<div id="nv${i}" class="vpd-green">VPD ${calcVPD(w.night.t,w.night.rh)}</div>
+</div>
+</div>`;
+});
+}
+
+function saveSOP(){
+let name=document.getElementById("sopName").value;
+store.sops[name]=JSON.parse(JSON.stringify(store.sops[store.activeSop]));
+store.activeSop=name;
+save(); loadSops();
+document.getElementById("sopEditor").classList.add("hidden");
+}
+
+/* -------------------- ROOMS -------------------- */
 function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
 function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
 function isDay(l){let h=new Date().getHours();return l==="18"?h>=6:h>=6&&h<18}
@@ -183,24 +230,19 @@ ${t.co2} •
 });
 }
 
-/* ---------- ROOM DETAIL (FIXED NIGHT VPD) ---------- */
+/* -------------------- ROOM DETAIL -------------------- */
 function openRoom(f,i){
 dashboard.classList.add("hidden");
 roomView.classList.remove("hidden");
-
 let r=store.facilities[f][i];
 let d=document.getElementById("roomDetail");
 d.innerHTML=`<h2>${r.name}</h2><div class="small">SOP: ${r.sopName}</div>`;
-
 r.sop.weeks.forEach((w,wi)=>{
 ["day","night"].forEach(p=>{
 let key=`${wi}-${p}`;
 let log=r.logs[key]||{};
-let av=(log.t!==undefined&&log.rh!==undefined&&log.t!==null&&log.rh!==null)
-  ? calcVPD(log.t,log.rh)
-  : null;
+let av=log.t&&log.rh?calcVPD(log.t,log.rh):null;
 let tv=calcVPD(w[p].t,w[p].rh);
-
 d.innerHTML+=`
 <div class="card">
 <h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
@@ -217,7 +259,7 @@ VPD ${tv}
 <input ${log.locked?"disabled":""} placeholder="Temp" value="${log.t||""}" onchange="logVal('${f}',${i},'${key}','t',this.value)">
 <input ${log.locked?"disabled":""} placeholder="RH" value="${log.rh||""}" onchange="logVal('${f}',${i},'${key}','rh',this.value)">
 <input ${log.locked?"disabled":""} placeholder="CO₂" value="${log.co2||""}" onchange="logVal('${f}',${i},'${key}','co2',this.value)">
-${av!==null?`<div class="${vpdClass(av,tv)}">VPD ${av}</div>`:""}
+${av?`<div class="${vpdClass(av,tv)}">VPD ${av}</div>`:""}
 ${log.locked
 ? `<button class="secondary" onclick="editLog('${f}',${i},'${key}')">Edit</button>`
 : `<button onclick="saveLog('${f}',${i},'${key}')">Save Entry</button>`
