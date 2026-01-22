@@ -1,29 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Room Cycle Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f4f6fb;margin:0;padding:16px}
-h1,h2,h3,h4{margin:8px 0}
-.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.06)}
-label{font-weight:600;display:block;margin-top:8px}
-select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
-button{background:#2563eb;color:#fff;border:none;font-weight:700}
-.room{border-top:1px solid #eee;padding-top:10px;margin-top:10px;cursor:pointer}
-.row{display:flex;gap:12px}
-.col{flex:1}
-.target{background:#eef5ff;border-radius:8px;padding:8px}
-.actual{background:#f9f9f9;border-radius:8px;padding:8px}
-.green{color:#16a34a;font-weight:700}
-.yellow{color:#ca8a04;font-weight:700}
-.red{color:#dc2626;font-weight:700}
-.small{font-size:13px;color:#555}
-.hidden{display:none}
-.back{background:#e5e7eb;color:#111;margin-bottom:12px}
-.disabled{opacity:.5;pointer-events:none}
-.tv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+:root {
+--bg:#f4f6fb;
+--card:#ffffff;
+--primary:#2563eb;
+--border:#e5e7eb;
+--text:#111827;
+--muted:#6b7280;
+--green:#16a34a;
+--red:#dc2626;
+}
+
+body {
+font-family: system-ui, -apple-system, BlinkMacSystemFont;
+background:var(--bg);
+margin:0;
+padding:16px;
+color:var(--text);
+}
+
+h1,h2,h3 { margin:0 0 12px 0; }
+.card {
+background:var(--card);
+border-radius:14px;
+padding:16px;
+margin-bottom:16px;
+box-shadow:0 10px 30px rgba(0,0,0,.06);
+}
+label { font-weight:600; display:block; margin-bottom:4px; }
+input,select,button {
+width:100%;
+padding:10px;
+border-radius:10px;
+border:1px solid var(--border);
+margin-bottom:10px;
+font-size:16px;
+}
+button {
+background:var(--primary);
+color:#fff;
+border:none;
+font-weight:700;
+}
+button.secondary {
+background:#374151;
+}
+button.danger {
+background:#b91c1c;
+}
+.row {
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:12px;
+}
+.small { font-size:13px; color:var(--muted); }
+
+.vpd-ok { color:var(--green); font-weight:700; }
+.vpd-bad { color:var(--red); font-weight:700; }
+
+.room-card {
+border-top:1px solid var(--border);
+padding-top:12px;
+margin-top:12px;
+cursor:pointer;
+}
+
+.back {
+background:#e5e7eb;
+color:#111;
+}
+
+.hidden { display:none; }
+
 </style>
 </head>
 
@@ -31,262 +85,139 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <h1>Room Cycle Tracker</h1>
 
-<div id="dashboard">
-
+<!-- MODE -->
 <div class="card">
 <label>Mode</label>
-<select id="mode" onchange="renderRooms()">
-<option value="app">App</option>
-<option value="tv">TV Wall</option>
+<select id="mode">
+<option>App</option>
+<option>TV Wall</option>
 </select>
 </div>
 
+<!-- FACILITY -->
 <div class="card">
 <label>Facility</label>
-<select id="facility" onchange="renderRooms()">
+<select id="facility">
 <option>True Leaf</option>
 <option>Motor City</option>
 <option>El Roya</option>
 </select>
 </div>
 
+<!-- SOP -->
 <div class="card">
 <label>Active SOP</label>
 <select id="sopSelect"></select>
-<button onclick="toggleSopEditor()">Create / Edit SOP</button>
+<button onclick="openSOPEditor()">Create / Edit SOP</button>
 </div>
 
-<div class="card hidden" id="sopEditor">
-<label>SOP Name</label>
-<input id="sopName">
-<div id="sopWeeks"></div>
-<button onclick="saveSOP()">Save SOP</button>
-</div>
-
+<!-- ADD ROOM -->
 <div class="card">
 <h3>Add Room</h3>
-<input id="roomName" placeholder="Room name">
-<input id="plantCount" type="number" placeholder="Plant count">
+<input id="roomName" placeholder="Room name / number" />
+<input id="plantCount" type="number" placeholder="Plant count" />
 <label>Start Date</label>
-<input id="startDate" type="date">
+<input id="startDate" type="date" />
 <label>Light Schedule</label>
-<select id="lights">
-<option value="12">12 / 12</option>
-<option value="18">18 / 6</option>
+<select id="light">
+<option>12/12</option>
+<option>18/6</option>
 </select>
 <button onclick="addRoom()">Add Room</button>
 </div>
 
+<!-- ROOMS -->
 <div class="card">
 <h3>Rooms</h3>
 <div id="rooms"></div>
 </div>
 
-<div class="card">
-<h3>Completed Cycles</h3>
-<div id="completed"></div>
-</div>
-
-</div>
-
-<div id="roomView" class="hidden">
-<button class="back" onclick="back()">← Back</button>
-<div id="roomDetail"></div>
-</div>
+<!-- ROOM DETAIL -->
+<div id="roomDetail" class="hidden"></div>
 
 <script>
-/* ---------------- DATA ---------------- */
-let store=JSON.parse(localStorage.getItem("RCT_FINAL"))||{
-facilities:{},
-completed:[],
+// ---------------- DATA ----------------
+let data = JSON.parse(localStorage.getItem("tracker")) || {
 sops:{},
-activeSop:null
+rooms:{},
+completed:[]
 };
-function save(){localStorage.setItem("RCT_FINAL",JSON.stringify(store))}
 
-/* ---------------- DEFAULT SOP ---------------- */
-if(!store.sops["True Leaf Fire"]){
-store.sops["True Leaf Fire"]={name:"True Leaf Fire",weeks:Array.from({length:9},()=>({
-day:{t:82,rh:72,co2:1000},
-night:{t:78,rh:70,co2:1000}
-}))};
-store.activeSop="True Leaf Fire"; save();
+// True Leaf Fire SOP preload
+if(!data.sops["True Leaf Fire"]) {
+data.sops["True Leaf Fire"] = {
+weeks:{
+1:{day:{t:82,rh:72,co2:1000,vmin:1.0,vmax:1.2},night:{t:78,rh:70,co2:1000,vmin:0.9,vmax:1.1}},
+2:{day:{t:82,rh:72,co2:1000,vmin:1.0,vmax:1.2},night:{t:78,rh:70,co2:1000,vmin:0.9,vmax:1.1}},
+3:{day:{t:82,rh:72,co2:1000,vmin:1.0,vmax:1.2},night:{t:78,rh:70,co2:1000,vmin:0.9,vmax:1.1}},
+4:{day:{t:80,rh:68,co2:1200,vmin:1.1,vmax:1.3},night:{t:70,rh:55,co2:1200,vmin:1.0,vmax:1.2}},
+5:{day:{t:78,rh:66,co2:1200,vmin:1.1,vmax:1.3},night:{t:70,rh:55,co2:1200,vmin:1.0,vmax:1.2}},
+6:{day:{t:77,rh:65,co2:1200,vmin:1.0,vmax:1.2},night:{t:68,rh:55,co2:1200,vmin:0.9,vmax:1.1}},
+7:{day:{t:74,rh:55,co2:800,vmin:1.2,vmax:1.4},night:{t:67,rh:40,co2:800,vmin:1.3,vmax:1.5}},
+8:{day:{t:74,rh:50,co2:400,vmin:1.3,vmax:1.5},night:{t:65,rh:35,co2:400,vmin:1.3,vmax:1.5}},
+9:{day:{t:72,rh:45,co2:400,vmin:1.4,vmax:1.6},night:{t:64,rh:35,co2:400,vmin:1.4,vmax:1.6}}
+}
+};
 }
 
-/* ---------------- INIT ---------------- */
-const sopSelect=document.getElementById("sopSelect");
-function loadSops(){
-sopSelect.innerHTML="";
-Object.keys(store.sops).forEach(s=>{
-let o=document.createElement("option");o.textContent=s;sopSelect.appendChild(o);
+// ---------------- HELPERS ----------------
+function save() {
+localStorage.setItem("tracker", JSON.stringify(data));
+render();
+}
+
+function vpd(temp, rh) {
+const es = 0.6108 * Math.exp((17.27 * temp) / (temp + 237.3));
+const ea = es * (rh / 100);
+return (es - ea).toFixed(2);
+}
+
+// ---------------- RENDER ----------------
+function render() {
+const sopSel = document.getElementById("sopSelect");
+sopSel.innerHTML = "";
+Object.keys(data.sops).forEach(s=>{
+const o=document.createElement("option");
+o.textContent=s;
+sopSel.appendChild(o);
 });
-sopSelect.value=store.activeSop;
-}
-loadSops();
 
-/* ---------------- HELPERS ---------------- */
-function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
-function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
-function isDay(l){let h=new Date().getHours();return l==="18"?h>=6:h>=6&&h<18}
-function vpd(t,rh){
-let c=(t-32)*5/9;
-let es=0.6108*Math.exp((17.27*c)/(c+237.3));
-return (es*(1-rh/100)).toFixed(2);
-}
-function status(actual,target){
-let d=Math.abs(actual-target);
-if(d<=2)return"green";
-if(d<=5)return"yellow";
-return"red";
-}
-
-/* ---------------- SOP EDITOR ---------------- */
-function toggleSopEditor(){
-document.getElementById("sopEditor").classList.toggle("hidden");
-renderSopEditor();
-}
-function renderSopEditor(){
-let sop=store.sops[sopSelect.value];
-document.getElementById("sopName").value=sop.name;
-let d=document.getElementById("sopWeeks");d.innerHTML="";
-sop.weeks.forEach((w,i)=>{
-d.innerHTML+=`
-<h4>Week ${i+1}</h4>
-<div class="row">
-<div class="col target">
-Day<br>
-<input value="${w.day.t}" onchange="w.day.t=this.value">
-<input value="${w.day.rh}" onchange="w.day.rh=this.value">
-<input value="${w.day.co2}" onchange="w.day.co2=this.value">
-<div class="green">VPD ${vpd(w.day.t,w.day.rh)}</div>
-</div>
-<div class="col target">
-Night<br>
-<input value="${w.night.t}" onchange="w.night.t=this.value">
-<input value="${w.night.rh}" onchange="w.night.rh=this.value">
-<input value="${w.night.co2}" onchange="w.night.co2=this.value">
-<div class="green">VPD ${vpd(w.night.t,w.night.rh)}</div>
-</div>
-</div>`;
+const roomBox = document.getElementById("rooms");
+roomBox.innerHTML="";
+Object.values(data.rooms).forEach(r=>{
+const div=document.createElement("div");
+div.className="room-card";
+div.innerHTML=`
+<strong>${r.name}</strong><br>
+SOP: ${r.sop}<br>
+Week ${r.week} · Day ${r.day}<br>
+Target VPD ${r.targetVPD}
+`;
+div.onclick=()=>openRoom(r.id);
+roomBox.appendChild(div);
 });
 }
-function saveSOP(){
-let name=document.getElementById("sopName").value;
-store.sops[name]=JSON.parse(JSON.stringify(store.sops[sopSelect.value]));
-store.activeSop=name;
-save(); loadSops();
-document.getElementById("sopEditor").classList.add("hidden");
-}
 
-/* ---------------- ADD ROOM ---------------- */
-function addRoom(){
-if(!sopSelect.value)return alert("Select SOP first");
-let fac=facility.value;
-if(!store.facilities[fac])store.facilities[fac]=[];
-let start=new Date(startDate.value).getTime();
-if(!start)return alert("Start date required");
-store.facilities[fac].push({
+function addRoom() {
+const sop = sopSelect.value;
+if(!sop) return alert("Select SOP first");
+const id=Date.now();
+data.rooms[id]={
+id,
 name:roomName.value,
 plants:plantCount.value,
-lights:lights.value,
-start,
-sop:JSON.parse(JSON.stringify(store.sops[sopSelect.value])),
-logs:{},
-yield:null,
-unit:null,
-closed:false
-});
-save(); renderRooms();
-}
-
-/* ---------------- RENDER ROOMS ---------------- */
-function renderRooms(){
-let fac=facility.value;
-let cont=document.getElementById("rooms");
-cont.innerHTML="";
-cont.className=mode.value==="tv"?"tv-grid":"";
-(store.facilities[fac]||[]).forEach((r,i)=>{
-let w=weekFrom(r.start);
-let dn=isDay(r.lights)?"day":"night";
-let t=r.sop.weeks[w-1][dn];
-let div=document.createElement("div");
-div.className="room";
-div.innerHTML=`
-<strong>${r.name}</strong>
-<div class="small">Week ${w}, Day ${dayInWeek(r.start)} (${dn})</div>
-<div class="${status(t.t,t.t)}">${t.t}°F • ${t.rh}% • ${t.co2}ppm • VPD ${vpd(t.t,t.rh)}</div>`;
-if(mode.value!=="tv")div.onclick=()=>openRoom(fac,i);
-cont.appendChild(div);
-});
-}
-
-/* ---------------- ROOM DETAIL ---------------- */
-function openRoom(f,i){
-dashboard.classList.add("hidden");
-roomView.classList.remove("hidden");
-let r=store.facilities[f][i];
-let d=document.getElementById("roomDetail");d.innerHTML=`<h2>${r.name}</h2>`;
-r.sop.weeks.forEach((w,wi)=>{
-["day","night"].forEach(p=>{
-let key=`${wi}-${p}`;let log=r.logs[key]||{};
-d.innerHTML+=`
-<div class="card">
-<h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
-<div class="row">
-<div class="col target">
-Target<br>
-${w[p].t}°F / ${w[p].rh}% / ${w[p].co2}ppm<br>
-<span class="green">VPD ${vpd(w[p].t,w[p].rh)}</span>
-</div>
-<div class="col actual">
-<input placeholder="Temp" value="${log.t||""}" onchange="log('${f}',${i},'${key}','t',this.value)">
-<input placeholder="RH" value="${log.rh||""}" onchange="log('${f}',${i},'${key}','rh',this.value)">
-<input placeholder="CO₂" value="${log.co2||""}" onchange="log('${f}',${i},'${key}','co2',this.value)">
-</div>
-</div>
-</div>`;
-});
-});
-let w=weekFrom(r.start);
-let disabled=w<6?"disabled":"";
-d.innerHTML+=`
-<div class="card ${disabled}">
-<h3>Cycle Complete – Save Data</h3>
-<input placeholder="Yield per plant">
-<select><option>lbs</option><option>grams</option></select>
-<button onclick="complete('${f}',${i})">Save Cycle</button>
-</div>`;
-}
-
-/* ---------------- LOG / COMPLETE ---------------- */
-function log(f,i,k,field,val){
-store.facilities[f][i].logs[k]=store.facilities[f][i].logs[k]||{};
-store.facilities[f][i].logs[k][field]=val;
-store.facilities[f][i].logs[k].ts=new Date().toISOString();
+sop,
+start:startDate.value,
+week:1,
+day:1,
+targetVPD:data.sops[sop].weeks[1].day.vmin+"–"+data.sops[sop].weeks[1].day.vmax,
+logs:{}
+};
 save();
 }
-function complete(f,i){
-let r=store.facilities[f][i];
-if(weekFrom(r.start)<6)return alert("Available after Week 6");
-store.completed.push(r);
-store.facilities[f].splice(i,1);
-save(); back(); renderCompleted();
-}
-function renderCompleted(){
-let d=document.getElementById("completed");d.innerHTML="";
-store.completed.forEach(r=>{
-d.innerHTML+=`<div class="room"><strong>${r.name}</strong> – Completed</div>`;
-});
-}
 
-/* ---------------- NAV ---------------- */
-function back(){
-roomView.classList.add("hidden");
-dashboard.classList.remove("hidden");
-renderRooms(); renderCompleted();
-}
-
-renderRooms(); renderCompleted();
+// INIT
+render();
 </script>
 
 </body>
