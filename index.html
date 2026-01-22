@@ -18,13 +18,18 @@ button.secondary{background:#374151}
 .col{flex:1}
 .target{background:#eef5ff;border-radius:8px;padding:8px}
 .actual{background:#f9f9f9;border-radius:8px;padding:8px}
-.green{color:#16a34a;font-weight:700}
-.red{color:#dc2626;font-weight:700}
 .small{font-size:13px;color:#555}
 .hidden{display:none}
 .back{background:#e5e7eb;color:#111;margin-bottom:12px}
 .sop-badge{display:inline-block;background:#111827;color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;margin-bottom:6px}
 .log-label{font-size:12px;font-weight:700;color:#374151;margin-bottom:4px}
+
+.vpd-green{color:#16a34a;font-weight:700}
+.vpd-yellow{color:#ca8a04;font-weight:700}
+.vpd-red{color:#dc2626;font-weight:700}
+
+.temp-blue{color:#2563eb;font-weight:600}
+.rh-red{color:#b91c1c;font-weight:600}
 </style>
 </head>
 
@@ -83,8 +88,8 @@ button.secondary{background:#374151}
 </div>
 
 <script>
-let store=JSON.parse(localStorage.getItem("RCT_FULL"))||{facilities:{},sops:{},activeSop:null};
-function save(){localStorage.setItem("RCT_FULL",JSON.stringify(store))}
+let store=JSON.parse(localStorage.getItem("RCT_FINAL"))||{facilities:{},sops:{},activeSop:null};
+function save(){localStorage.setItem("RCT_FINAL",JSON.stringify(store))}
 
 if(!store.sops["True Leaf Fire"]){
 store.sops["True Leaf Fire"]={name:"True Leaf Fire",weeks:Array.from({length:9},()=>({
@@ -108,17 +113,27 @@ loadSops();
 function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
 function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
 function isDay(l){let h=new Date().getHours();return l==="18"?h>=6:h>=6&&h<18}
+
 function calcVPD(tF,rh){
 let c=(tF-32)*5/9;
 let es=0.6108*Math.exp((17.27*c)/(c+237.3));
 return (es*(1-rh/100)).toFixed(2);
 }
+
+function vpdClass(actual,target){
+let d=Math.abs(actual-target);
+if(d<=0.10)return"vpd-green";
+if(d<=0.25)return"vpd-yellow";
+return"vpd-red";
+}
+
 function formatTS(ts){return ts?new Date(ts).toLocaleString():"—"}
 
 function toggleSopEditor(){
 document.getElementById("sopEditor").classList.toggle("hidden");
 renderSopEditor();
 }
+
 function renderSopEditor(){
 let sop=store.sops[store.activeSop];
 document.getElementById("sopName").value=sop.name;
@@ -127,21 +142,22 @@ sop.weeks.forEach((w,i)=>{
 d.innerHTML+=`
 <h4>Week ${i+1}</h4>
 <div class="row">
-<div class="col target">Day
-<input value="${w.day.t}" onchange="w.day.t=this.value">
-<input value="${w.day.rh}" onchange="w.day.rh=this.value">
-<input value="${w.day.co2}" onchange="w.day.co2=this.value">
-<div class="green">VPD ${calcVPD(w.day.t,w.day.rh)}</div>
+<div class="col target">
+<span class="temp-blue">${w.day.t}°F</span> /
+<span class="rh-red">${w.day.rh}%</span> /
+${w.day.co2}ppm<br>
+<span class="vpd-green">VPD ${calcVPD(w.day.t,w.day.rh)}</span>
 </div>
-<div class="col target">Night
-<input value="${w.night.t}" onchange="w.night.t=this.value">
-<input value="${w.night.rh}" onchange="w.night.rh=this.value">
-<input value="${w.night.co2}" onchange="w.night.co2=this.value">
-<div class="green">VPD ${calcVPD(w.night.t,w.night.rh)}</div>
+<div class="col target">
+<span class="temp-blue">${w.night.t}°F</span> /
+<span class="rh-red">${w.night.rh}%</span> /
+${w.night.co2}ppm<br>
+<span class="vpd-green">VPD ${calcVPD(w.night.t,w.night.rh)}</span>
 </div>
 </div>`;
 });
 }
+
 function saveSOP(){
 let name=document.getElementById("sopName").value;
 store.sops[name]=JSON.parse(JSON.stringify(store.sops[store.activeSop]));
@@ -176,13 +192,19 @@ cont.innerHTML="";
 let w=weekFrom(r.start);
 let dn=isDay(r.lights)?"day":"night";
 let t=r.sop.weeks[w-1][dn];
+let targetVPD=calcVPD(t.t,t.rh);
 let div=document.createElement("div");
 div.className="room";
 div.innerHTML=`
 <div class="sop-badge">${r.sopName}</div>
 <strong>${r.name}</strong>
 <div class="small">Week ${w}, Day ${dayInWeek(r.start)} (${dn})</div>
-<div>${t.t}°F • ${t.rh}% • ${t.co2}ppm • <span class="green">VPD ${calcVPD(t.t,t.rh)}</span></div>
+<div>
+<span class="temp-blue">${t.t}°F</span> •
+<span class="rh-red">${t.rh}%</span> •
+${t.co2}ppm •
+<span class="vpd-green">VPD ${targetVPD}</span>
+</div>
 <button class="secondary" onclick="openRoom('${fac}',${i})">View Room</button>`;
 cont.appendChild(div);
 });
@@ -200,13 +222,14 @@ let key=`${wi}-${p}`;
 let log=r.logs[key]||{};
 let actualVPD=log.t&&log.rh?calcVPD(log.t,log.rh):null;
 let targetVPD=calcVPD(w[p].t,w[p].rh);
-let inRange=actualVPD&&Math.abs(actualVPD-targetVPD)<=0.15;
 d.innerHTML+=`
 <div class="card">
 <h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
 <div class="row">
 <div class="col target">
-${w[p].t}°F / ${w[p].rh}% / ${w[p].co2}ppm<br>
+<span class="temp-blue">${w[p].t}°F</span> /
+<span class="rh-red">${w[p].rh}%</span> /
+${w[p].co2}ppm<br>
 VPD ${targetVPD}
 </div>
 <div class="col actual">
@@ -215,7 +238,7 @@ VPD ${targetVPD}
 <input ${log.locked?"disabled":""} placeholder="Temp (°F)" value="${log.t||""}" onchange="logVal('${f}',${i},'${key}','t',this.value)">
 <input ${log.locked?"disabled":""} placeholder="RH (%)" value="${log.rh||""}" onchange="logVal('${f}',${i},'${key}','rh',this.value)">
 <input ${log.locked?"disabled":""} placeholder="CO₂ (ppm)" value="${log.co2||""}" onchange="logVal('${f}',${i},'${key}','co2',this.value)">
-${actualVPD?`<div class="${inRange?'green':'red'}">VPD ${actualVPD} ${inRange?'IN RANGE':'OUT OF RANGE'}</div>`:""}
+${actualVPD?`<div class="${vpdClass(actualVPD,targetVPD)}">VPD ${actualVPD}</div>`:""}
 ${log.locked
 ? `<button class="secondary" onclick="editLog('${f}',${i},'${key}')">Edit</button>`
 : `<button onclick="saveLog('${f}',${i},'${key}')">Save Entry</button>`
@@ -231,6 +254,7 @@ function logVal(f,i,k,field,val){
 store.facilities[f][i].logs[k]=store.facilities[f][i].logs[k]||{};
 store.facilities[f][i].logs[k][field]=Number(val);
 }
+
 function saveLog(f,i,k){
 let log=store.facilities[f][i].logs[k];
 if(log.t==null||log.rh==null||log.co2==null)return alert("Enter Temp, RH, CO₂");
@@ -239,6 +263,7 @@ log.locked=true;
 log.ts=new Date().toISOString();
 save(); openRoom(f,i);
 }
+
 function editLog(f,i,k){
 store.facilities[f][i].logs[k].locked=false;
 save(); openRoom(f,i);
