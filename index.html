@@ -6,13 +6,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f4f6fb;margin:0;padding:16px}
-h1,h2,h3{margin:8px 0}
+h1,h2,h3,h4{margin:8px 0}
 .card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.06)}
 label{font-weight:600;display:block;margin-top:8px}
 select,input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
-.room{border-top:1px solid #eee;padding-top:10px;margin-top:10px}
+.room{border-top:1px solid #eee;padding-top:10px;margin-top:10px;cursor:pointer}
+.row{display:flex;gap:12px}
+.col{flex:1}
+.target{background:#eef5ff;border-radius:8px;padding:8px}
+.actual{background:#f9f9f9;border-radius:8px;padding:8px}
+.green{color:#16a34a;font-weight:700}
+.yellow{color:#ca8a04;font-weight:700}
+.red{color:#dc2626;font-weight:700}
 .small{font-size:13px;color:#555}
+.hidden{display:none}
+.back{background:#e5e7eb;color:#111;margin-bottom:12px}
+.disabled{opacity:.5;pointer-events:none}
 </style>
 </head>
 
@@ -20,16 +30,49 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <h1>Room Cycle Tracker</h1>
 
+<div id="dashboard">
+
+<div class="card">
+<label>Mode</label>
+<select id="mode" onchange="renderRooms()">
+<option value="app">App</option>
+<option value="tv">TV Wall</option>
+</select>
+</div>
+
+<div class="card">
+<label>Facility</label>
+<select id="facility" onchange="renderRooms()">
+<option>True Leaf</option>
+<option>Motor City</option>
+<option>El Roya</option>
+</select>
+</div>
+
 <div class="card">
 <label>Active SOP</label>
 <select id="sopSelect"></select>
-<button onclick="createSOP()">Create New SOP</button>
+<button onclick="toggleSopEditor()">Create / Edit SOP</button>
+</div>
+
+<div class="card hidden" id="sopEditor">
+<label>SOP Name</label>
+<input id="sopName">
+<div id="sopWeeks"></div>
+<button onclick="saveSOP()">Save SOP</button>
 </div>
 
 <div class="card">
 <h3>Add Room</h3>
 <input id="roomName" placeholder="Room name / number">
 <input id="plantCount" type="number" placeholder="Plant count">
+<label>Start Date</label>
+<input id="startDate" type="date">
+<label>Light Schedule</label>
+<select id="lights">
+<option value="12">12 / 12</option>
+<option value="18">18 / 6</option>
+</select>
 <button onclick="addRoom()">Add Room</button>
 </div>
 
@@ -38,92 +81,194 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 <div id="rooms"></div>
 </div>
 
-<script>
-/* ================= DATA ================= */
-let store = JSON.parse(localStorage.getItem("RCT_STORE")) || {
-sops:{},
-rooms:[]
-};
+<div class="card">
+<h3>Completed Cycles</h3>
+<div id="completed"></div>
+</div>
 
-/* ============= DEFAULT SOP ============== */
+</div>
+
+<div id="roomView" class="hidden">
+<button class="back" onclick="back()">← Back</button>
+<div id="roomDetail"></div>
+</div>
+
+<script>
+/* ---------------- DATA ---------------- */
+let store=JSON.parse(localStorage.getItem("RCT_FULL"))||{
+facilities:{},
+completed:[],
+sops:{},
+activeSop:null
+};
+function save(){localStorage.setItem("RCT_FULL",JSON.stringify(store))}
+
+/* ---------------- DEFAULT SOP ---------------- */
 if(!store.sops["True Leaf Fire"]){
-store.sops["True Leaf Fire"]={
-name:"True Leaf Fire",
-weeks:[
+store.sops["True Leaf Fire"]={name:"True Leaf Fire",weeks:[
 {day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
 {day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
 {day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
 {day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
 {day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
-{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
-{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}},
-{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}},
-{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}}
-]
-};
-save();
+{day:{t:74,rh:55,co2:800},night:{t:67,rh:40,co2:800}},
+{day:{t:74,rh:50,co2:400},night:{t:65,rh:35,co2:400}},
+{day:{t:74,rh:50,co2:400},night:{t:65,rh:35,co2:400}},
+{day:{t:74,rh:50,co2:400},night:{t:65,rh:35,co2:400}}
+]};
+store.activeSop="True Leaf Fire"; save();
 }
 
-/* ============= INIT UI ================== */
+/* ---------------- INIT ---------------- */
 const sopSelect=document.getElementById("sopSelect");
-function loadSOPs(){
+function loadSops(){
 sopSelect.innerHTML="";
-Object.keys(store.sops).forEach(name=>{
-let o=document.createElement("option");
-o.textContent=name;
-sopSelect.appendChild(o);
+Object.keys(store.sops).forEach(s=>{
+let o=document.createElement("option");o.textContent=s;sopSelect.appendChild(o);
+});
+sopSelect.value=store.activeSop;
+}
+loadSops();
+
+/* ---------------- HELPERS ---------------- */
+function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
+function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
+function isDay(l){let h=new Date().getHours();return l==="18"?h>=6:h>=6&&h<18}
+function vpd(t,rh){
+let c=(t-32)*5/9;
+let es=0.6108*Math.exp((17.27*c)/(c+237.3));
+return (es*(1-rh/100)).toFixed(2);
+}
+
+/* ---------------- SOP EDITOR ---------------- */
+function toggleSopEditor(){
+document.getElementById("sopEditor").classList.toggle("hidden");
+renderSopEditor();
+}
+function renderSopEditor(){
+let sop=store.sops[sopSelect.value];
+document.getElementById("sopName").value=sop.name;
+let d=document.getElementById("sopWeeks");d.innerHTML="";
+sop.weeks.forEach((w,i)=>{
+d.innerHTML+=`
+<h4>Week ${i+1}</h4>
+<div class="row">
+<div class="col target">Day: ${w.day.t}°F / ${w.day.rh}% / ${w.day.co2}ppm<br>VPD ${vpd(w.day.t,w.day.rh)}</div>
+<div class="col target">Night: ${w.night.t}°F / ${w.night.rh}% / ${w.night.co2}ppm<br>VPD ${vpd(w.night.t,w.night.rh)}</div>
+</div>`;
 });
 }
-loadSOPs();
-
-/* ============= CREATE SOP ================ */
-function createSOP(){
-let name=prompt("New SOP name");
-if(!name || store.sops[name]) return;
-store.sops[name]=JSON.parse(JSON.stringify(store.sops["True Leaf Fire"]));
-save();
-loadSOPs();
-sopSelect.value=name;
+function saveSOP(){
+let name=document.getElementById("sopName").value;
+store.sops[name]=JSON.parse(JSON.stringify(store.sops[sopSelect.value]));
+store.activeSop=name; save(); loadSops();
 }
 
-/* ============= ADD ROOM ================= */
+/* ---------------- ADD ROOM ---------------- */
 function addRoom(){
-if(!sopSelect.value) return alert("Select SOP first");
-if(!roomName.value || !plantCount.value) return alert("Fill all fields");
-store.rooms.push({
+if(!sopSelect.value)return alert("Select SOP first");
+let fac=facility.value;
+if(!store.facilities[fac])store.facilities[fac]=[];
+let start=new Date(startDate.value).getTime();
+if(!start)return alert("Start date required");
+store.facilities[fac].push({
 name:roomName.value,
 plants:plantCount.value,
-sopName:sopSelect.value,
-sopSnapshot:JSON.parse(JSON.stringify(store.sops[sopSelect.value])),
-start:Date.now()
+lights:lights.value,
+start,
+sop:JSON.parse(JSON.stringify(store.sops[sopSelect.value])),
+logs:{},
+yield:null,
+closed:false
 });
-save();
-renderRooms();
+save(); renderRooms();
 }
 
-/* ============= RENDER ROOMS ============== */
+/* ---------------- RENDER ROOMS ---------------- */
 function renderRooms(){
-const r=document.getElementById("rooms");
-r.innerHTML="";
-store.rooms.forEach(room=>{
-const d=document.createElement("div");
-d.className="room";
-d.innerHTML=`
-<strong>${room.name}</strong><br>
-<span class="small">
-Plants: ${room.plants}<br>
-SOP: ${room.sopName}
-</span>
-`;
-r.appendChild(d);
+let fac=facility.value;
+let cont=document.getElementById("rooms");cont.innerHTML="";
+(store.facilities[fac]||[]).forEach((r,i)=>{
+let w=weekFrom(r.start);
+let dn=isDay(r.lights)?"day":"night";
+let t=r.sop.weeks[w-1][dn];
+let div=document.createElement("div");div.className="room";
+div.innerHTML=`<strong>${r.name}</strong>
+<div class="small">Week ${w}, Day ${dayInWeek(r.start)} (${dn})</div>
+<div>${t.t}°F • ${t.rh}% • ${t.co2}ppm • VPD ${vpd(t.t,t.rh)}</div>`;
+div.onclick=()=>openRoom(fac,i);
+cont.appendChild(div);
 });
 }
-renderRooms();
 
-/* ============= SAVE ===================== */
-function save(){
-localStorage.setItem("RCT_STORE",JSON.stringify(store));
+/* ---------------- ROOM DETAIL ---------------- */
+function openRoom(f,i){
+dashboard.classList.add("hidden");
+roomView.classList.remove("hidden");
+let r=store.facilities[f][i];
+let d=document.getElementById("roomDetail");d.innerHTML=`<h2>${r.name}</h2>`;
+r.sop.weeks.forEach((w,wi)=>{
+["day","night"].forEach(p=>{
+let key=`${wi}-${p}`;let log=r.logs[key]||{};
+d.innerHTML+=`
+<div class="card">
+<h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
+<div class="row">
+<div class="col target">
+Target: ${w[p].t}°F / ${w[p].rh}% / ${w[p].co2}ppm<br>
+VPD ${vpd(w[p].t,w[p].rh)}
+</div>
+<div class="col actual">
+<input placeholder="Temp" value="${log.t||""}" onchange="log('${f}',${i},'${key}','t',this.value)">
+<input placeholder="RH" value="${log.rh||""}" onchange="log('${f}',${i},'${key}','rh',this.value)">
+<input placeholder="CO₂" value="${log.co2||""}" onchange="log('${f}',${i},'${key}','co2',this.value)">
+</div>
+</div>
+</div>`;
+});
+});
+let w=weekFrom(r.start);
+let btnClass=w>=6?"":"disabled";
+d.innerHTML+=`
+<div class="card ${btnClass}">
+<h3>Cycle Complete</h3>
+<input placeholder="Yield per plant" onchange="rYield(this.value)">
+<select id="yUnit"><option>lbs</option><option>grams</option></select>
+<button onclick="complete('${f}',${i})">Save Cycle</button>
+</div>`;
 }
+
+/* ---------------- LOG / COMPLETE ---------------- */
+function log(f,i,k,field,val){
+store.facilities[f][i].logs[k]=store.facilities[f][i].logs[k]||{};
+store.facilities[f][i].logs[k][field]=val;
+store.facilities[f][i].logs[k].ts=new Date().toISOString();
+save();
+}
+function rYield(v){window._yield=v}
+function complete(f,i){
+let r=store.facilities[f][i];
+if(weekFrom(r.start)<6)return alert("Available after Week 6");
+r.yield=window._yield||null;
+store.completed.push(r);
+store.facilities[f].splice(i,1);
+save(); back(); renderCompleted();
+}
+function renderCompleted(){
+let d=document.getElementById("completed");d.innerHTML="";
+store.completed.forEach(r=>{
+d.innerHTML+=`<div class="room"><strong>${r.name}</strong> – Yield ${r.yield}</div>`;
+});
+}
+
+/* ---------------- NAV ---------------- */
+function back(){
+roomView.classList.add("hidden");
+dashboard.classList.remove("hidden");
+renderRooms(); renderCompleted();
+}
+
+renderRooms(); renderCompleted();
 </script>
 
 </body>
