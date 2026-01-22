@@ -1,184 +1,187 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Room Cycle Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto;background:#f4f6fb;margin:0;padding:16px}
-h1{margin:0 0 12px}
-.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 6px 18px rgba(0,0,0,.08)}
-button,input,select{width:100%;padding:10px;margin-top:8px;font-size:16px}
-button{background:#2563eb;color:#fff;border:none;border-radius:8px}
-.back{background:#6b7280}
-.temp{color:#2563eb;font-weight:600}
-.rh{color:#dc2626;font-weight:600}
-.vpd-good{color:#16a34a;font-weight:700}
-.vpd-warn{color:#ca8a04;font-weight:700}
-.vpd-bad{color:#dc2626;font-weight:700}
-.locked input{background:#f3f4f6}
-.small{font-size:12px;color:#6b7280}
-.row{display:flex;gap:12px;flex-wrap:wrap}
-.col{flex:1;min-width:140px}
-.tab{display:inline-block;margin-right:12px;font-weight:600;cursor:pointer}
-.tab.active{text-decoration:underline}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background:#f4f6fb;
+  margin:0;
+  padding:16px;
+}
+h1 { font-size:28px; margin-bottom:12px; }
+.card {
+  background:#fff;
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:14px;
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+}
+label { font-weight:600; font-size:14px; }
+input, select {
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  margin-bottom:10px;
+  border-radius:10px;
+  border:1px solid #ccc;
+}
+button {
+  width:100%;
+  padding:12px;
+  border:none;
+  border-radius:12px;
+  background:#2563eb;
+  color:#fff;
+  font-weight:700;
+  font-size:15px;
+}
+.room-card {
+  padding:12px;
+  border-top:1px solid #eee;
+}
+.target {
+  background:#eef5ff;
+  padding:10px;
+  border-radius:10px;
+}
+.vpd-green { color:#16a34a; font-weight:700; }
+.vpd-yellow { color:#ca8a04; font-weight:700; }
+.vpd-red { color:#dc2626; font-weight:700; }
+.small { font-size:13px; opacity:.8; }
+.back {
+  background:#e5e7eb;
+  color:#000;
+  margin-bottom:10px;
+}
 </style>
 </head>
 
 <body>
+
 <h1>Room Cycle Tracker</h1>
-<div id="app"></div>
+
+<div class="card">
+  <label>Facility</label>
+  <select id="facility">
+    <option>True Leaf</option>
+    <option>Motor City</option>
+    <option>El Roya</option>
+  </select>
+</div>
+
+<div class="card">
+  <label>Active SOP</label>
+  <select id="sopSelect"></select>
+</div>
+
+<div class="card">
+  <h3>Add Room</h3>
+  <input id="roomName" placeholder="Room #" />
+  <input id="plantCount" placeholder="Plant Count" type="number" />
+  <label>Start Date</label>
+  <input id="startDate" type="date" />
+  <label>Light Schedule</label>
+  <select id="light">
+    <option value="12">12 / 12</option>
+    <option value="18">18 / 6</option>
+  </select>
+  <button onclick="addRoom()">Add Room</button>
+</div>
+
+<div class="card">
+  <h3>Rooms</h3>
+  <div id="rooms"></div>
+</div>
 
 <script>
-const state={
- view:"home",
- activeRoom:null,
- rooms:[],
- sops:{
-  "True Leaf Fire":{
-   vpd:[1.0,1.4],
-   weeks:[
-    [82,72,1000,78,70,1000],
-    [82,72,1000,78,70,1000],
-    [82,72,1000,78,70,1000],
-    [80,68,1200,70,55,1200],
-    [78,66,1200,70,55,1200],
-    [77,65,1200,68,55,1200],
-    [74,55,800,67,40,800],
-    [74,50,"Ambient",65,35,"Ambient"],
-    [74,50,"Ambient",65,35,"Ambient"]
-   ]
+/* ---------------- SOP DATA ---------------- */
+
+const sops = {
+  "True Leaf Fire": {
+    weeks: {
+      1:{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+      2:{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+      3:{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+      4:{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
+      5:{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
+      6:{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
+      7:{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
+      8:{day:{t:74,rh:50,co2:"Ambient"}, night:{t:65,rh:35,co2:"Ambient"}},
+      9:{day:{t:74,rh:50,co2:"Ambient"}, night:{t:65,rh:35,co2:"Ambient"}}
+    }
   }
- }
 };
 
-const save=()=>localStorage.setItem("rct",JSON.stringify(state));
-const load=()=>{const d=localStorage.getItem("rct");if(d)Object.assign(state,JSON.parse(d))};
-load();
+/* ---------------- STATE ---------------- */
 
-function calcVPD(t,rh){
- const tc=(t-32)*5/9;
- const svp=0.6108*Math.exp((17.27*tc)/(tc+237.3));
- return +(svp-(svp*(rh/100))).toFixed(2);
-}
-function vpdClass(v,[min,max]){
- if(v>=min&&v<=max)return"vpd-good";
- if(v>=min-0.2&&v<=max+0.2)return"vpd-warn";
- return"vpd-bad";
-}
-function weekDay(room){
- const d=Math.floor((Date.now()-new Date(room.start))/86400000);
- return {week:Math.floor(d/7)+1,day:(d%7)+1};
+let rooms = [];
+
+/* ---------------- INIT ---------------- */
+
+const sopSelect = document.getElementById("sopSelect");
+Object.keys(sops).forEach(s=>{
+  const o=document.createElement("option");
+  o.textContent=s;
+  sopSelect.appendChild(o);
+});
+
+/* ---------------- VPD ---------------- */
+
+function calcVPD(tempF, rh){
+  const t=(tempF-32)*5/9;
+  const es=0.6108*Math.exp((17.27*t)/(t+237.3));
+  return ((1-rh/100)*es).toFixed(2);
 }
 
-function home(){
- const active=state.rooms.filter(r=>!r.completed);
- const done=state.rooms.filter(r=>r.completed);
- document.getElementById("app").innerHTML=`
- <div class="card">
-  <b>Add Room</b>
-  <input id="rn" placeholder="Room name">
-  <input id="rp" type="number" placeholder="Plant count">
-  <input id="rs" type="date">
-  <button onclick="addRoom()">Add Room</button>
- </div>
-
- <div class="card">
-  <span class="tab active">Active</span>
-  <span class="tab">Completed</span>
-  ${active.map(r=>`
-   <div style="margin-top:12px">
-    <b>${r.name}</b><br>
-    SOP: ${r.sop}<br>
-    Week ${weekDay(r).week} Day ${weekDay(r).day}
-    <button onclick="openRoom(${r.id})">View Room</button>
-   </div>`).join("")}
- </div>
-
- ${done.length?`
- <div class="card">
-  <b>Completed Rooms</b>
-  ${done.map(r=>`<div>${r.name}</div>`).join("")}
- </div>`:""}
- `;
+function vpdClass(v){
+  if(v>=1.0 && v<=1.4) return "vpd-green";
+  if(v>=0.9 && v<=1.5) return "vpd-yellow";
+  return "vpd-red";
 }
+
+/* ---------------- ROOMS ---------------- */
 
 function addRoom(){
- const r={
-  id:Date.now(),
-  name:rn.value,
-  plants:rp.value,
-  start:rs.value,
-  sop:"True Leaf Fire",
-  logs:{},
-  completed:false
- };
- state.rooms.push(r);save();home();
-}
-
-function openRoom(id){state.activeRoom=id;state.view="room";render()}
-
-function log(r,k,f,v){
- r.logs[k]=r.logs[k]||{locked:false};
- if(!r.logs[k].locked){
-  r.logs[k][f]=v;
-  r.logs[k].vpd=(r.logs[k].t&&r.logs[k].h)?calcVPD(r.logs[k].t,r.logs[k].h):null;
- }
- save();
-}
-
-function saveLog(r,k){
- r.logs[k].locked=true;
- r.logs[k].time=new Date().toLocaleString();
- save();render();
-}
-function editLog(r,k){r.logs[k].locked=false;save();render()}
-
-function roomView(){
- const r=state.rooms.find(x=>x.id===state.activeRoom);
- const sop=state.sops[r.sop];
- const wd=weekDay(r);
- let html=`<button class="back" onclick="state.view='home';render()">← Back</button>
- <h2>${r.name} — Week ${wd.week} Day ${wd.day}</h2>`;
-
- sop.weeks.forEach((w,i)=>{
-  const [dt,dr,dc,nt,nr,nc]=w;
-  ["d","n"].forEach(p=>{
-   const key=`${i}-${p}`;
-   const logd=r.logs[key]||{};
-   const locked=logd.locked?"locked":"";
-   const target=p==="d"?[dt,dr,dc]:[nt,nr,nc];
-   const vpdT=calcVPD(target[0],target[1]);
-   html+=`
-   <div class="card ${locked}">
-    <b>Week ${i+1} ${p==="d"?"DAY":"NIGHT"}</b>
-    <div>
-     <span class="temp">${target[0]}°F</span> /
-     <span class="rh">${target[1]}%</span> /
-     ${target[2]} ppm<br>
-     <span class="${vpdClass(vpdT,sop.vpd)}">VPD ${vpdT}</span>
-    </div>
-    <input value="${logd.t||""}" placeholder="Temp °F" ${locked?"disabled":""}
-     oninput="log(r,'${key}','t',this.value)">
-    <input value="${logd.h||""}" placeholder="RH %" ${locked?"disabled":""}
-     oninput="log(r,'${key}','h',this.value)">
-    <input value="${logd.c||""}" placeholder="CO₂ ppm" ${locked?"disabled":""}
-     oninput="log(r,'${key}','c',this.value)">
-    ${logd.vpd?`<div class="${vpdClass(logd.vpd,sop.vpd)}">Actual VPD ${logd.vpd}</div>`:""}
-    ${locked?`
-     <div class="small">Saved ${logd.time}</div>
-     <button onclick="editLog(r,'${key}')">Edit</button>`:
-     `<button onclick="saveLog(r,'${key}')">Save</button>`}
-   </div>`;
+  const name=roomName.value;
+  const plants=plantCount.value;
+  const start=new Date(startDate.value);
+  if(!name||!plants||!startDate.value) return alert("Fill all fields");
+  rooms.push({
+    name, plants, start,
+    sop:sopSelect.value,
+    logs:{}
   });
- });
-
- html+=wd.week>=6?`<button onclick="r.completed=true;save();render()">Cycle Complete</button>`:"";
- document.getElementById("app").innerHTML=html;
+  renderRooms();
 }
 
-function render(){state.view==="home"?home():roomView()}
-render();
+function renderRooms(){
+  roomsDiv.innerHTML="";
+  rooms.forEach((r,i)=>{
+    const now=new Date();
+    const days=Math.floor((now-r.start)/86400000);
+    const week=Math.min(9,Math.max(1,Math.floor(days/7)+1));
+    const phase=(now.getHours()>=6 && now.getHours()<18)?"day":"night";
+    const target=sops[r.sop].weeks[week][phase];
+    const vpd=calcVPD(target.t,target.rh);
+    roomsDiv.innerHTML+=`
+    <div class="room-card">
+      <b>Room ${r.name}</b><br>
+      SOP: ${r.sop}<br>
+      Week ${week} · ${phase.toUpperCase()}<br>
+      <div class="target">
+        Target: ${target.t}°F / ${target.rh}% / ${target.co2} ppm<br>
+        <span class="${vpdClass(vpd)}">VPD ${vpd}</span>
+      </div>
+    </div>`;
+  });
+}
+
+const roomsDiv=document.getElementById("rooms");
 </script>
+
 </body>
 </html>
