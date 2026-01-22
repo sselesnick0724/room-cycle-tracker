@@ -1,62 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8">
 <title>Room Cycle Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 body {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   background:#f4f6fb;
   margin:0;
   padding:16px;
 }
-h1 { margin-bottom:12px; }
+h1,h2,h3 { margin:0 0 8px }
 .card {
   background:#fff;
   border-radius:14px;
   padding:16px;
   margin-bottom:16px;
-  box-shadow:0 4px 12px rgba(0,0,0,.08);
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
 }
-button {
-  width:100%;
-  padding:14px;
-  border:none;
-  border-radius:12px;
-  background:#2563eb;
-  color:#fff;
-  font-size:16px;
-  font-weight:600;
-}
-button.secondary {
-  background:#6b7280;
-}
-input, select {
+label { font-weight:600; display:block; margin-top:8px }
+input,select,button {
   width:100%;
   padding:10px;
-  margin:6px 0;
+  margin-top:6px;
   border-radius:10px;
-  border:1px solid #ddd;
+  border:1px solid #ccc;
   font-size:15px;
 }
-.row {
-  display:flex;
-  gap:12px;
+button {
+  background:#2563eb;
+  color:#fff;
+  border:none;
+  font-weight:600;
 }
-.col {
-  flex:1;
-}
-.temp { color:#2563eb; font-weight:600; }
-.rh { color:#dc2626; font-weight:600; }
-.vpd-good { color:#16a34a; font-weight:700; }
-.vpd-warn { color:#d97706; font-weight:700; }
-.vpd-bad { color:#dc2626; font-weight:700; }
-.small { font-size:13px; color:#555; }
-.locked { background:#f3f4f6; }
-.hidden { display:none; }
-hr { border:none; border-top:1px solid #eee; margin:12px 0; }
+button.secondary { background:#6b7280 }
+.row { display:flex; gap:12px }
+.col { flex:1 }
+.temp { color:#2563eb; font-weight:600 }
+.rh { color:#dc2626; font-weight:600 }
+.vpd-good { color:#16a34a; font-weight:700 }
+.vpd-warn { color:#d97706; font-weight:700 }
+.vpd-bad { color:#dc2626; font-weight:700 }
+.small { font-size:13px; opacity:.8 }
+.hidden { display:none }
+hr { border:none; border-top:1px solid #eee; margin:12px 0 }
 </style>
 </head>
 
@@ -64,12 +53,8 @@ hr { border:none; border-top:1px solid #eee; margin:12px 0; }
 
 <h1>Room Cycle Tracker</h1>
 
-<div class="card">
-  <label>Facility</label>
-  <select id="facility">
-    <option>True Leaf</option>
-  </select>
-</div>
+<!-- DASHBOARD -->
+<div id="dashboard">
 
 <div class="card">
   <label>Active SOP</label>
@@ -80,11 +65,8 @@ hr { border:none; border-top:1px solid #eee; margin:12px 0; }
   <h3>Add Room</h3>
   <input id="roomName" placeholder="Room name / number">
   <input id="plantCount" placeholder="Plant count" type="number">
+  <label>Start Date</label>
   <input id="startDate" type="date">
-  <select id="light">
-    <option value="12/12">12 / 12</option>
-    <option value="18/6">18 / 6</option>
-  </select>
   <button onclick="addRoom()">Add Room</button>
 </div>
 
@@ -93,47 +75,70 @@ hr { border:none; border-top:1px solid #eee; margin:12px 0; }
   <div id="roomList"></div>
 </div>
 
-<!-- VIEW ROOM -->
-<div class="card hidden" id="viewRoom">
-  <button class="secondary" onclick="closeRoomView()">← Back</button>
-  <h2 id="vrTitle"></h2>
-  <div id="weeks"></div>
+</div>
+
+<!-- ROOM VIEW -->
+<div id="roomView" class="hidden">
+  <button class="secondary" onclick="closeRoom()">← Back</button>
+  <h2 id="roomTitle"></h2>
+  <div id="roomWeeks"></div>
 </div>
 
 <script>
-/* ---------- DATA ---------- */
-const sopData = {
-  "True Leaf Fire": {
-    vpdMin: 1.0,
-    vpdMax: 1.4,
-    weeks: [
-      {d:[82,72,1000], n:[78,70,1000]},
-      {d:[82,72,1000], n:[78,70,1000]},
-      {d:[82,72,1000], n:[78,70,1000]},
-      {d:[80,68,1200], n:[70,55,1200]},
-      {d:[78,66,1200], n:[70,55,1200]},
-      {d:[77,65,1200], n:[68,55,1200]},
-      {d:[74,55,800],  n:[67,40,800]},
-      {d:[74,50,null], n:[65,35,null]},
-      {d:[72,45,null], n:[64,35,null]}
+/* ---------- HELPERS ---------- */
+function calcVPD(tempF, rh){
+  const tc=(tempF-32)*5/9;
+  const es=0.6108*Math.exp((17.27*tc)/(tc+237.3));
+  return +(es*(1-rh/100)).toFixed(2);
+}
+function vpdClass(v,min,max){
+  if(v>=min && v<=max) return "vpd-good";
+  if(v>=min-0.2 && v<=max+0.2) return "vpd-warn";
+  return "vpd-bad";
+}
+function getCurrentWeekDay(startDate){
+  const s=new Date(startDate);
+  const t=new Date();
+  s.setHours(0,0,0,0);
+  t.setHours(0,0,0,0);
+  const days=Math.floor((t-s)/86400000);
+  return {
+    week: Math.floor(days/7)+1,
+    day: (days%7)+1
+  };
+}
+
+/* ---------- SOP ---------- */
+const sopData={
+  "True Leaf Fire":{
+    vpd:[1.0,1.4],
+    weeks:[
+      {d:[82,72,1000],n:[78,70,1000]},
+      {d:[82,72,1000],n:[78,70,1000]},
+      {d:[82,72,1000],n:[78,70,1000]},
+      {d:[80,68,1200],n:[70,55,1200]},
+      {d:[78,66,1200],n:[70,55,1200]},
+      {d:[77,65,1200],n:[68,55,1200]},
+      {d:[74,55,800], n:[67,40,800]},
+      {d:[74,50,null],n:[65,35,null]},
+      {d:[74,50,null],n:[65,35,null]}
     ]
   }
 };
 
-let rooms = JSON.parse(localStorage.getItem("rooms") || "[]");
+/* ---------- STATE ---------- */
+let rooms=JSON.parse(localStorage.getItem("rooms")||"[]");
 
 /* ---------- INIT ---------- */
-const sopSelect = document.getElementById("sopSelect");
 Object.keys(sopData).forEach(s=>{
-  const o=document.createElement("option");
-  o.textContent=s;
-  sopSelect.appendChild(o);
+  sopSelect.innerHTML+=`<option>${s}</option>`;
 });
 renderRooms();
 
-/* ---------- FUNCTIONS ---------- */
+/* ---------- ROOMS ---------- */
 function addRoom(){
-  if(!sopSelect.value) return alert("Select SOP first");
+  if(!roomName.value||!plantCount.value||!startDate.value)
+    return alert("Fill all fields");
   rooms.push({
     id:Date.now(),
     name:roomName.value,
@@ -142,68 +147,67 @@ function addRoom(){
     sop:sopSelect.value,
     logs:{}
   });
-  save();
-  renderRooms();
+  save(); renderRooms();
 }
 
 function renderRooms(){
   roomList.innerHTML="";
   rooms.forEach(r=>{
-    const d=document.createElement("div");
-    d.className="card";
-    d.innerHTML=`
-      <b>${r.name}</b><br>
+    const pos=getCurrentWeekDay(r.start);
+    roomList.innerHTML+=`
+    <div class="card">
+      <strong>${r.name}</strong><br>
       SOP: ${r.sop}<br>
-      Plants: ${r.plants}
-      <br><br>
+      Plants: ${r.plants}<br>
+      <div class="small">Week ${pos.week} • Day ${pos.day}</div>
       <button onclick="openRoom(${r.id})">View Room</button>
-    `;
-    roomList.appendChild(d);
+    </div>`;
   });
 }
 
+/* ---------- VIEW ROOM ---------- */
 function openRoom(id){
-  document.getElementById("viewRoom").classList.remove("hidden");
-  document.querySelectorAll(".card:not(#viewRoom)").forEach(c=>c.classList.add("hidden"));
+  dashboard.classList.add("hidden");
+  roomView.classList.remove("hidden");
   const r=rooms.find(x=>x.id===id);
-  vrTitle.textContent="Room "+r.name;
-  weeks.innerHTML="";
+  const pos=getCurrentWeekDay(r.start);
+  roomTitle.textContent=`Room ${r.name} — Week ${pos.week} • Day ${pos.day}`;
+  roomWeeks.innerHTML="";
   sopData[r.sop].weeks.forEach((w,i)=>{
-    weeks.innerHTML+=weekBlock(r,i,w);
+    const active=i+1===pos.week;
+    roomWeeks.innerHTML+=`
+    <div class="card" style="${active?'border:2px solid #2563eb':''}">
+      <h3>Week ${i+1}</h3>
+      ${logBlock(r,i,"DAY",w.d)}
+      ${logBlock(r,i,"NIGHT",w.n)}
+    </div>`;
   });
 }
 
-function closeRoomView(){
-  document.getElementById("viewRoom").classList.add("hidden");
-  document.querySelectorAll(".card").forEach(c=>c.classList.remove("hidden"));
+function closeRoom(){
+  roomView.classList.add("hidden");
+  dashboard.classList.remove("hidden");
 }
 
-function weekBlock(room,idx,w){
-  return `
-  <div class="card">
-    <h4>Week ${idx+1}</h4>
-    ${logBlock(room,idx,"DAY",w.d)}
-    ${logBlock(room,idx,"NIGHT",w.n)}
-  </div>`;
-}
-
+/* ---------- LOGGING ---------- */
 function logBlock(room,week,mode,target){
   const key=week+"-"+mode;
   const log=room.logs[key]||{};
   const vpdT=calcVPD(target[0],target[1]);
-  const vpdClass=vpdColor(vpdT,room.sop);
   return `
   <div class="row">
     <div class="col">
       <b>${mode} Target</b><br>
       <span class="temp">${target[0]}°F</span> /
       <span class="rh">${target[1]}%</span> /
-      ${target[2]||"—"} ppm<br>
-      <span class="${vpdClass}">VPD ${vpdT}</span>
+      ${target[2]??"—"} ppm<br>
+      <span class="${vpdClass(vpdT,sopData[room.sop].vpd[0],sopData[room.sop].vpd[1])}">
+        VPD ${vpdT}
+      </span>
     </div>
     <div class="col">
       <b>Actual</b>
-      <input ${log.locked?"disabled":""} placeholder="Temp" value="${log.t||""}" 
+      <input ${log.locked?"disabled":""} placeholder="Temp" value="${log.t||""}"
         oninput="updateLog(${room.id},'${key}','t',this.value)">
       <input ${log.locked?"disabled":""} placeholder="RH" value="${log.h||""}"
         oninput="updateLog(${room.id},'${key}','h',this.value)">
@@ -212,11 +216,10 @@ function logBlock(room,week,mode,target){
       <div class="small">
         VPD ${log.t&&log.h?calcVPD(log.t,log.h):"--"}
       </div>
-      ${log.locked?
-        `<div class="small">Saved ${log.time}</div>
-         <button onclick="editLog(${room.id},'${key}')">Edit</button>`
-        :
-        `<button onclick="saveLog(${room.id},'${key}')">Save</button>`
+      ${log.locked
+        ? `<div class="small">Saved ${log.time}</div>
+           <button onclick="editLog(${room.id},'${key}')">Edit</button>`
+        : `<button onclick="saveLog(${room.id},'${key}')">Save</button>`
       }
     </div>
   </div>`;
@@ -228,34 +231,21 @@ function updateLog(id,key,f,v){
   r.logs[key][f]=v;
   save();
 }
-
 function saveLog(id,key){
   const r=rooms.find(x=>x.id===id);
   r.logs[key].locked=true;
   r.logs[key].time=new Date().toLocaleString();
   save(); openRoom(id);
 }
-
 function editLog(id,key){
   const r=rooms.find(x=>x.id===id);
   r.logs[key].locked=false;
   save(); openRoom(id);
 }
-
-function calcVPD(t,h){
-  const tc=(t-32)*5/9;
-  const es=0.6108*Math.exp((17.27*tc)/(tc+237.3));
-  return ((es*(1-h/100))).toFixed(2);
-}
-function vpdColor(v,sop){
-  const s=sopData[sop];
-  if(v>=s.vpdMin && v<=s.vpdMax) return "vpd-good";
-  if(Math.abs(v-s.vpdMin)<=0.2 || Math.abs(v-s.vpdMax)<=0.2) return "vpd-warn";
-  return "vpd-bad";
-}
 function save(){
   localStorage.setItem("rooms",JSON.stringify(rooms));
 }
 </script>
+
 </body>
 </html>
