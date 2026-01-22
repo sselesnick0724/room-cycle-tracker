@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Room Cycle Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: Arial, sans-serif; background:#0f172a; color:#e5e7eb; margin:0; padding:16px; }
+h1,h2,h3 { margin:0 0 8px 0; }
+.card { background:#020617; border-radius:10px; padding:14px; margin-bottom:14px; }
+label { font-size:13px; opacity:0.9; }
+input, select, button, textarea {
+  width:100%; padding:8px; margin-top:4px; margin-bottom:10px;
+  border-radius:6px; border:none;
+}
+button { background:#2563eb; color:white; font-weight:600; }
+button.secondary { background:#334155; }
+.row { display:flex; gap:8px; }
+.row > div { flex:1; }
+.small { font-size:12px; opacity:0.75; }
+.vpd-ok { color:#22c55e; font-weight:700; }
+.vpd-warn { color:#facc15; font-weight:700; }
+.vpd-bad { color:#ef4444; font-weight:700; }
+.log { background:#020617; border:1px solid #1e293b; padding:8px; border-radius:6px; font-size:12px; margin-top:6px; }
+hr { border:0; border-top:1px solid #1e293b; margin:12px 0; }
+</style>
+</head>
+<body>
+
+<h1>Room Cycle Tracker</h1>
+
+<div class="card">
+<h2>SOP Manager</h2>
+<select id="sopSelect"></select>
+<div class="row">
+  <button onclick="createSOP()">➕ New SOP</button>
+  <button class="secondary" onclick="renameSOP()">✏️ Rename</button>
+  <button class="secondary" onclick="deleteSOP()">🗑️ Delete</button>
+</div>
+<p class="small">Default SOP cannot be deleted</p>
+</div>
+
+<div class="card">
+<h2>Rooms</h2>
+<div id="rooms"></div>
+<button onclick="addRoom()">➕ Add Room</button>
+</div>
+
+<script>
+/* ---------- Utilities ---------- */
+function vpdF(tempF,rh){
+  const c=(tempF-32)*5/9;
+  const es=0.6108*Math.exp((17.27*c)/(c+237.3));
+  return (1-rh/100)*es;
+}
+function vpdClass(v){
+  if(v<0.8||v>1.6) return "vpd-bad";
+  if(v<1.0||v>1.4) return "vpd-warn";
+  return "vpd-ok";
+}
+
+/* ---------- Storage ---------- */
+const SOP_KEY="tracker_sops_logs";
+const ROOM_KEY="tracker_rooms_logs";
+
+/* ---------- Default SOP ---------- */
+const DEFAULT_SOP={
+  id:"default",
+  name:"High Yield + Quality (9 Week)",
+  weeks:Array.from({length:9},(_,i)=>{
+    const wk=i+1;
+    return {
+      week:wk,
+      day:{temp:[82,80,78,77,75,74,72,70,68][i],rh:[72,68,66,65,60,55,50,45,40][i],co2:[1000,1200,1200,1200,1000,800,400,400,400][i]},
+      night:{temp:[78,76,74,72,70,68,67,65,63][i],rh:[70,65,60,55,50,45,40,38,35][i],co2:[800,800,800,800,600,600,400,400,400][i]}
+    };
+  })
+};
+
+let sops=JSON.parse(localStorage.getItem(SOP_KEY))||[DEFAULT_SOP];
+let rooms=JSON.parse(localStorage.getItem(ROOM_KEY))||[];
+
+/* ---------- SOP Manager ---------- */
+const sopSelect=document.getElementById("sopSelect");
+
+function renderSOPs(){
+  sopSelect.innerHTML="";
+  sops.forEach(s=>{
+    const o=document.createElement("option");
+    o.value=s.id; o.textContent=s.name;
+    sopSelect.appendChild(o);
+  });
+}
+
+function createSOP(){
+  const name=prompt("New SOP name:");
+  if(!name) return;
+  const base=sops.find(s=>s.id==="default");
+  const copy=JSON.parse(JSON.stringify(base));
+  copy.id="sop_"+Date.now();
+  copy.name=name;
+  sops.push(copy);
+  save(); render();
+}
+
+function renameSOP(){
+  const id=sopSelect.value;
+  if(id==="default") return alert("Default SOP cannot be renamed");
+  const s=sops.find(x=>x.id===id);
+  const name=prompt("Rename SOP:",s.name);
+  if(name){ s.name=name; save(); render(); }
+}
+
+function deleteSOP(){
+  const id=sopSelect.value;
+  if(id==="default") return alert("Default SOP cannot be deleted");
+  if(rooms.some(r=>r.sop===id)) return alert("SOP in use by a room");
+  sops=sops.filter(s=>s.id!==id);
+  save(); render();
+}
+
+/* ---------- Rooms ---------- */
+function addRoom(){
+  rooms.push({
+    name:"Room "+(rooms.length+1),
+    week:1,
+    mode:"day",
+    sop:sopSelect.value,
+    logs:[]
+  });
+  save(); render();
+}
+
+function addLog(i){
+  const r=rooms[i];
+  const note=prompt("Enter observations / readings:");
+  if(!note) return;
+  r.logs.unshift({
+    time:new Date().toLocaleString(),
+    mode:r.mode,
+    note
+  });
+  r.logs=r.logs.slice(0,20); // keep last 20
+  save(); render();
+}
+
+function renderRooms(){
+  const div=document.getElementById("rooms");
+  div.innerHTML="";
+  rooms.forEach((r,i)=>{
+    const sop=sops.find(s=>s.id===r.sop);
+    const w=sop.weeks[r.week-1];
+    const t=w[r.mode];
+    const v=vpdF(t.temp,t.rh);
+    div.innerHTML+=`
+    <div class="card">
+      <input value="${r.name}" onchange="rooms[${i}].name=this.value;save()">
+      <div class="row">
+        <div>
+          <label>Week</label>
+          <select onchange="rooms[${i}].week=parseInt(this.value);save();render()">
+            ${sop.weeks.map(x=>`<option ${x.week===r.week?"selected":""}>${x.week}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label>Mode</label>
+          <select onchange="rooms[${i}].mode=this.value;save();render()">
+            <option value="day" ${r.mode==="day"?"selected":""}>Lights ON</option>
+            <option value="night" ${r.mode==="night"?"selected":""}>Lights OFF</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="small">
+        Temp: ${t.temp}°F<br>
+        RH: ${t.rh}%<br>
+        CO₂: ${t.co2} ppm<br>
+        VPD: <span class="${vpdClass(v)}">${v.toFixed(2)} kPa</span>
+      </p>
+
+      <button onclick="addLog(${i})">➕ Add ${r.mode==="day"?"Lights ON":"Lights OFF"} Entry</button>
+
+      ${r.logs.length?`
+        <div class="log">
+          <strong>Recent Logs</strong><br>
+          ${r.logs.map(l=>`[${l.time}] (${l.mode}) ${l.note}`).join("<br>")}
+        </div>`:""}
+    </div>`;
+  });
+}
+
+/* ---------- Save / Render ---------- */
+function save(){
+  localStorage.setItem(SOP_KEY,JSON.stringify(sops));
+  localStorage.setItem(ROOM_KEY,JSON.stringify(rooms));
+}
+function render(){
+  renderSOPs();
+  renderRooms();
+}
+render();
+</script>
+
+</body>
+</html>
