@@ -3,23 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <title>Room Cycle Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f4f6fb;margin:0;padding:16px}
 h1,h2,h3{margin:8px 0}
 .card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.06)}
-label{font-weight:600;display:block;margin-top:8px}
-select,input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
+label{font-weight:600;margin-top:8px;display:block}
+input,select,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 .room{border-top:1px solid #eee;padding-top:10px;margin-top:10px;cursor:pointer}
-.badge{display:inline-block;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:700}
-.green{background:#dcfce7;color:#166534}
-.yellow{background:#fef9c3;color:#854d0e}
-.red{background:#fee2e2;color:#7f1d1d}
-.hidden{display:none}
+.green{color:#16a34a;font-weight:700}
+.yellow{color:#ca8a04;font-weight:700}
+.red{color:#dc2626;font-weight:700}
 .back{background:#e5e7eb;color:#111;margin-bottom:12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.hidden{display:none}
+.small{font-size:13px;color:#555}
 </style>
 </head>
 
@@ -31,7 +30,7 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <div class="card">
 <label>Mode</label>
-<select id="mode" onchange="render()">
+<select id="mode" onchange="renderRooms()">
 <option value="app">App</option>
 <option value="tv">TV Wall</option>
 </select>
@@ -39,7 +38,7 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <div class="card">
 <label>Facility</label>
-<select id="facility" onchange="render()">
+<select id="facility" onchange="renderRooms()">
 <option>True Leaf</option>
 <option>Motor City</option>
 <option>El Roya</option>
@@ -48,14 +47,17 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 
 <div class="card">
 <label>Active SOP</label>
-<select id="sop"></select>
-<button onclick="openSopEditor()">Create / Edit SOP</button>
+<select id="sopSelect"></select>
+<button onclick="alert('SOP editor stays separate')">Create / Edit SOP</button>
 </div>
 
 <div class="card">
-<label>Add Room</label>
+<h3>Add Room</h3>
 <input id="roomName" placeholder="Room name / number">
-<input id="plants" type="number" placeholder="Plant count">
+<input id="plantCount" type="number" placeholder="Plant count">
+<label>Start Date</label>
+<input id="startDate" type="date">
+<label>Light Schedule</label>
 <select id="lights">
 <option value="12">12 / 12</option>
 <option value="18">18 / 6</option>
@@ -76,127 +78,119 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 </div>
 
 <script>
-/* ---------- DATA ---------- */
-let store = JSON.parse(localStorage.getItem("RCT")) || {
-facilities:{},
-sops:{},
-activeSop:null
-};
+let data=JSON.parse(localStorage.getItem("RCT"))||{facilities:{},sops:{},activeSop:null};
+function save(){localStorage.setItem("RCT",JSON.stringify(data))}
 
-function save(){localStorage.setItem("RCT",JSON.stringify(store))}
-
-/* ---------- DEFAULT SOP ---------- */
-if(!store.sops["True Leaf Fire"]){
-store.sops["True Leaf Fire"]={
-name:"True Leaf Fire",
-weeks:[
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
-{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
-{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}},
-{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}},
-{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}}
-]
-};
-store.activeSop="True Leaf Fire";
+/* DEFAULT SOP */
+if(!data.sops["True Leaf Fire"]){
+data.sops["True Leaf Fire"]={name:"True Leaf Fire",weeks:Array.from({length:9},(_,i)=>({
+day:{t:82,rh:72,co2:1000},
+night:{t:78,rh:70,co2:1000}
+}))};
+data.activeSop="True Leaf Fire";
 save();
 }
 
-/* ---------- INIT ---------- */
-const sopSel=document.getElementById("sop");
-Object.keys(store.sops).forEach(s=>{
-let o=document.createElement("option");
-o.textContent=s; sopSel.appendChild(o);
+/* INIT */
+const sopSelect=document.getElementById("sopSelect");
+Object.keys(data.sops).forEach(s=>{
+let o=document.createElement("option");o.textContent=s;sopSelect.appendChild(o);
 });
-sopSel.value=store.activeSop;
+sopSelect.value=data.activeSop;
 
-/* ---------- ADD ROOM ---------- */
+/* HELPERS */
+function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1);}
+function isDay(l){let h=new Date().getHours();return l==="18"?h>=6&&h<24:h>=6&&h<18;}
+function vpd(t,rh){let es=0.6108*Math.exp((17.27*t)/(t+237.3));return (es*(1-rh/100)).toFixed(2);}
+function status(actual,target){let d=Math.abs(actual-target);return d<=2?"green":d<=5?"yellow":"red";}
+
+/* ADD ROOM */
 function addRoom(){
-if(!sopSel.value){alert("Select SOP first");return;}
+if(!sopSelect.value)return alert("Select SOP first");
 let fac=facility.value;
-if(!store.facilities[fac])store.facilities[fac]=[];
-store.facilities[fac].push({
-name:roomName.value,
-plants:plants.value,
-lights:lights.value,
-start:Date.now(),
-sop:JSON.parse(JSON.stringify(store.sops[sopSel.value])),
-logs:[],
-closed:false,
-yield:null
+if(!data.facilities[fac])data.facilities[fac]=[];
+let start=new Date(startDate.value).getTime();
+if(!start)return alert("Select start date");
+data.facilities[fac].push({
+name:roomName.value,plants:plantCount.value,lights:lights.value,start,
+sop:JSON.parse(JSON.stringify(data.sops[sopSelect.value])),
+logs:{},closed:false,yield:null
 });
-save(); render();
+save();renderRooms();
 }
 
-/* ---------- WEEK / VPD ---------- */
-function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
-function vpd(t,rh){
-let c=(t-32)*5/9;
-let es=0.6108*Math.exp((17.27*c)/(c+237.3));
-return (es*(1-rh/100)).toFixed(2);
-}
-function status(actual,target){
-let d=Math.abs(actual-target);
-if(d<=2)return"green";
-if(d<=5)return"yellow";
-return"red";
-}
-
-/* ---------- RENDER ---------- */
-function render(){
+/* RENDER ROOMS */
+function renderRooms(){
+let cont=document.getElementById("rooms");cont.innerHTML="";
 let fac=facility.value;
-let cont=document.getElementById("rooms");
-cont.innerHTML="";
-let rooms=store.facilities[fac]||[];
-if(mode.value==="tv"){
-cont.className="grid";
-rooms.forEach(r=>{
+let tv=mode.value==="tv";
+(data.facilities[fac]||[]).forEach((r,i)=>{
 let w=weekFrom(r.start);
-let div=document.createElement("div");
-div.className="card";
-div.innerHTML=`<strong>${r.name}</strong><br>Week ${w}`;
-cont.appendChild(div);
-});
-} else {
-cont.className="";
-rooms.forEach((r,i)=>{
-let w=weekFrom(r.start);
-let div=document.createElement("div");
-div.className="room";
-div.innerHTML=`<strong>${r.name}</strong><br>Week ${w} — SOP ${r.sop.name}`;
-div.onclick=()=>openRoom(fac,i);
+let dn=isDay(r.lights)?"day":"night";
+let t=r.sop.weeks[w-1][dn];
+let div=document.createElement("div");div.className="room";
+div.innerHTML=`<strong>${r.name}</strong>
+<div class="small">Week ${w} • ${dn.toUpperCase()}</div>
+<div>${t.t}°F • ${t.rh}% • ${t.co2} ppm</div>`;
+if(!tv)div.onclick=()=>openRoom(fac,i);
 cont.appendChild(div);
 });
 }
-}
 
-/* ---------- ROOM DETAIL ---------- */
+/* ROOM DETAIL */
 function openRoom(f,i){
 dashboard.classList.add("hidden");
 roomView.classList.remove("hidden");
-let r=store.facilities[f][i];
-let d=document.getElementById("roomDetail");
-d.innerHTML=`<h2>${r.name}</h2>`;
+let r=data.facilities[f][i];
+let d=document.getElementById("roomDetail");d.innerHTML=`<h2>${r.name}</h2>`;
 r.sop.weeks.forEach((w,wi)=>{
+["day","night"].forEach(p=>{
+let key=`${wi}-${p}`;
+let log=r.logs[key]||{};
 d.innerHTML+=`
 <div class="card">
-<h4>Week ${wi+1}</h4>
-Day: ${w.day.t}°F / ${w.day.rh}% / ${w.day.co2}ppm<br>
-Night: ${w.night.t}°F / ${w.night.rh}% / ${w.night.co2}ppm
+<h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
+<input placeholder="Temp" value="${log.t||""}" onchange="log('${f}',${i},'${key}','t',this.value)">
+<input placeholder="RH" value="${log.rh||""}" onchange="log('${f}',${i},'${key}','rh',this.value)">
+<input placeholder="CO2" value="${log.co2||""}" onchange="log('${f}',${i},'${key}','co2',this.value)">
+<div class="small">VPD: ${log.t&&log.rh?vpd(log.t,log.rh):"--"} kPa</div>
 </div>`;
 });
+});
+d.innerHTML+=`
+<div class="card">
+<h3>Close Room</h3>
+<input placeholder="Yield per plant (lbs)" onchange="setYield('${f}',${i},this.value)">
+<button onclick="closeRoom('${f}',${i})">Close Room</button>
+<button onclick="exportCSV('${f}',${i})">Export CSV</button>
+</div>`;
 }
 
-function back(){
-roomView.classList.add("hidden");
-dashboard.classList.remove("hidden");
-render();
+/* LOGGING */
+function log(f,i,k,field,val){
+data.facilities[f][i].logs[k]=data.facilities[f][i].logs[k]||{};
+data.facilities[f][i].logs[k][field]=val;
+data.facilities[f][i].logs[k].ts=new Date().toISOString();
+save();
 }
 
-render();
+/* CLOSE / EXPORT */
+function setYield(f,i,v){data.facilities[f][i].yield=v;save();}
+function closeRoom(f,i){data.facilities[f][i].closed=true;save();alert("Room closed");}
+function exportCSV(f,i){
+let r=data.facilities[f][i];
+let csv="Week,Period,Temp,RH,CO2,VPD,Timestamp\n";
+Object.entries(r.logs).forEach(([k,l])=>{
+let [w,p]=k.split("-");
+csv+=`${+w+1},${p},${l.t||""},${l.rh||""},${l.co2||""},${l.t&&l.rh?vpd(l.t,l.rh):""},${l.ts||""}\n`;
+});
+let blob=new Blob([csv]);let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);a.download=r.name+".csv";a.click();
+}
+
+function back(){roomView.classList.add("hidden");dashboard.classList.remove("hidden");renderRooms();}
+
+renderRooms();
 </script>
 
 </body>
