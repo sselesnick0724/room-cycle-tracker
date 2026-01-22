@@ -1,35 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Room Cycle Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-body{font-family:Arial, sans-serif;background:#f4f6fb;margin:0;padding:16px}
-.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 6px 18px rgba(0,0,0,.08)}
-h1,h2,h3{margin-top:0}
-button{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:12px;width:100%;font-weight:600}
-select,input{width:100%;padding:10px;margin-top:6px;margin-bottom:10px}
-.hidden{display:none}
-.room{border-top:1px solid #e5e7eb;padding-top:12px;margin-top:12px}
-.badge{font-size:12px;color:#555}
+body {
+font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+background: #f4f6fb;
+margin: 0;
+padding: 20px;
+}
+h1 { margin-bottom: 10px; }
+.card {
+background: white;
+border-radius: 14px;
+padding: 16px;
+margin-bottom: 16px;
+box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+}
+label { font-weight: 600; display:block; margin-top:10px;}
+select,input,button {
+width:100%;
+padding:10px;
+margin-top:6px;
+border-radius:8px;
+border:1px solid #ccc;
+}
+button {
+background:#2563eb;
+color:white;
+border:none;
+font-weight:600;
+}
+.room-card {
+border-top:1px solid #eee;
+padding-top:12px;
+margin-top:12px;
+cursor:pointer;
+}
+.badge {
+display:inline-block;
+padding:4px 8px;
+border-radius:6px;
+font-size:12px;
+font-weight:600;
+}
+.green {background:#dcfce7;color:#166534}
+.yellow{background:#fef9c3;color:#854d0e}
+.red{background:#fee2e2;color:#7f1d1d}
+.hidden {display:none}
+.back-btn {
+background:#e5e7eb;
+color:#111;
+margin-bottom:12px;
+}
 </style>
 </head>
+
 <body>
 
 <h1>Room Cycle Tracker</h1>
 
+<div id="mainView">
+
 <div class="card">
-<h3>Mode</h3>
-<select>
+<label>Mode</label>
+<select id="modeSelect">
 <option>App</option>
 <option>TV</option>
 </select>
 </div>
 
 <div class="card">
-<h3>Facility</h3>
-<select>
+<label>Facility</label>
+<select id="facilitySelect">
 <option>True Leaf</option>
 <option>Motor City</option>
 <option>El Roya</option>
@@ -37,55 +83,160 @@ select,input{width:100%;padding:10px;margin-top:6px;margin-bottom:10px}
 </div>
 
 <div class="card">
-<h3>Active SOP</h3>
-<select id="sopSelect">
-<option>True Leaf Fire</option>
-</select>
-<button onclick="toggleEditor()">Edit SOP</button>
+<label>Active SOP</label>
+<select id="sopSelect"></select>
+<button onclick="toggleSopEditor()">Create / Edit SOP</button>
 </div>
 
 <div class="card hidden" id="sopEditor">
-<h3>SOP Editor (hidden by default)</h3>
-<p class="badge">Opens only when selected</p>
-<button onclick="toggleEditor()">Close</button>
+<label>SOP Name</label>
+<input id="sopName"/>
+
+<div id="sopWeeks"></div>
+
+<button onclick="saveSOP()">Save SOP</button>
 </div>
 
 <div class="card">
-<h3>Add Room</h3>
-<input id="roomName" placeholder="Room name">
-<input id="plantCount" type="number" placeholder="Plant count">
+<label>Add Room</label>
+<input placeholder="Room Name" id="roomName"/>
+<input type="number" placeholder="Plant Count" id="plantCount"/>
+<select id="lightSchedule">
+<option value="12">12/12</option>
+<option value="18">18/6</option>
+</select>
 <button onclick="addRoom()">Add Room</button>
 </div>
 
 <div class="card">
 <h3>Rooms</h3>
-<div id="rooms"></div>
+<div id="roomsList"></div>
+</div>
+
+</div>
+
+<div id="roomDetail" class="hidden">
+<button class="back-btn" onclick="backToMain()">← Back</button>
+<div id="roomDetailContent"></div>
 </div>
 
 <script>
-const rooms=[];
+/* ---------------- STORAGE ---------------- */
+let data = JSON.parse(localStorage.getItem("RCT_DATA")) || {
+facilities:{},
+sops:{},
+activeSop:null
+};
 
-function toggleEditor(){
-document.getElementById("sopEditor").classList.toggle("hidden");
+/* ---------------- DEFAULT SOP ---------------- */
+if(!data.sops["True Leaf Fire"]){
+data.sops["True Leaf Fire"]={
+name:"True Leaf Fire",
+weeks:[
+{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
+{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
+{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
+{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
+{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}},
+{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}},
+{day:{t:74,rh:50,co2:400}, night:{t:65,rh:35,co2:400}}
+]
+};
+data.activeSop="True Leaf Fire";
 }
 
-function addRoom(){
-const name=document.getElementById("roomName").value;
-const plants=document.getElementById("plantCount").value;
-if(!name||!plants){alert("Missing info");return;}
-rooms.push({name,plants});
-renderRooms();
-}
-
-function renderRooms(){
-const r=document.getElementById("rooms");
-r.innerHTML="";
-rooms.forEach(room=>{
-const d=document.createElement("div");
-d.className="room";
-d.innerHTML=`<strong>${room.name}</strong><br>Plants: ${room.plants}`;
-r.appendChild(d);
+/* ---------------- UI INIT ---------------- */
+function save(){localStorage.setItem("RCT_DATA",JSON.stringify(data))}
+const sopSelect=document.getElementById("sopSelect");
+function loadSops(){
+sopSelect.innerHTML="";
+Object.keys(data.sops).forEach(s=>{
+let o=document.createElement("option");
+o.textContent=s;
+sopSelect.appendChild(o);
 });
+sopSelect.value=data.activeSop;
+}
+loadSops();
+
+/* ---------------- SOP EDITOR ---------------- */
+function toggleSopEditor(){
+document.getElementById("sopEditor").classList.toggle("hidden");
+renderSopEditor();
+}
+function renderSopEditor(){
+let sop=data.sops[data.activeSop];
+document.getElementById("sopName").value=sop.name;
+let wDiv=document.getElementById("sopWeeks");
+wDiv.innerHTML="";
+sop.weeks.forEach((w,i)=>{
+wDiv.innerHTML+=`
+<h4>Week ${i+1}</h4>
+Day: <input value="${w.day.t}"> <input value="${w.day.rh}"> <input value="${w.day.co2}">
+Night: <input value="${w.night.t}"> <input value="${w.night.rh}"> <input value="${w.night.co2}">
+`;
+});
+}
+function saveSOP(){
+let name=document.getElementById("sopName").value;
+data.sops[name]=data.sops[data.activeSop];
+data.activeSop=name;
+save();
+loadSops();
+}
+
+/* ---------------- ROOMS ---------------- */
+function addRoom(){
+let fac=facilitySelect.value;
+if(!data.facilities[fac])data.facilities[fac]=[];
+data.facilities[fac].push({
+name:roomName.value,
+plants:plantCount.value,
+sop:JSON.parse(JSON.stringify(data.sops[data.activeSop])),
+start:new Date().toISOString(),
+logs:[]
+});
+save(); renderRooms();
+}
+function renderRooms(){
+let fac=facilitySelect.value;
+let div=document.getElementById("roomsList");
+div.innerHTML="";
+(data.facilities[fac]||[]).forEach((r,i)=>{
+div.innerHTML+=`
+<div class="room-card" onclick="openRoom('${fac}',${i})">
+<strong>${r.name}</strong><br>
+Plants: ${r.plants}<br>
+SOP: ${r.sop.name}
+</div>
+`;
+});
+}
+facilitySelect.onchange=renderRooms;
+renderRooms();
+
+/* ---------------- ROOM DETAIL ---------------- */
+function openRoom(f,i){
+document.getElementById("mainView").classList.add("hidden");
+document.getElementById("roomDetail").classList.remove("hidden");
+let r=data.facilities[f][i];
+let d=document.getElementById("roomDetailContent");
+d.innerHTML=`<h2>${r.name}</h2>`;
+r.sop.weeks.forEach((w,wi)=>{
+d.innerHTML+=`
+<div class="card">
+<h4>Week ${wi+1}</h4>
+Day Target: ${w.day.t}°F / ${w.day.rh}% / ${w.day.co2}ppm<br>
+Night Target: ${w.night.t}°F / ${w.night.rh}% / ${w.night.co2}ppm
+</div>
+`;
+});
+}
+function backToMain(){
+document.getElementById("roomDetail").classList.add("hidden");
+document.getElementById("mainView").classList.remove("hidden");
 }
 </script>
 
