@@ -1,81 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <title>Room Cycle Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 
 <style>
 body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  background:#f4f6fb;
-  margin:0;
-  padding:16px;
+  background: #f4f6fb;
+  margin: 0;
+  padding: 16px;
 }
-
-h1,h2,h3 { margin:0 0 8px }
-
+h1 { margin-bottom: 8px; }
 .card {
-  background:#fff;
-  border-radius:14px;
-  padding:16px;
-  margin-bottom:16px;
-  box-shadow:0 8px 24px rgba(0,0,0,.06);
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
-
-label { font-weight:600; display:block; margin-top:8px }
-input, select, button {
-  width:100%;
-  padding:10px;
-  margin-top:6px;
-  border-radius:8px;
-  border:1px solid #ccc;
-  font-size:16px;
-}
-
 button {
-  background:#2563eb;
-  color:#fff;
-  border:none;
-  margin-top:12px;
-  font-weight:600;
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-size: 16px;
 }
-
-.secondary { background:#555 }
-
-.row {
-  display:flex;
-  gap:12px;
+input, select {
+  width: 100%;
+  padding: 10px;
+  margin-top: 6px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
 }
-
-.col { flex:1 }
-
-.target {
-  background:#eef4ff;
-  border-radius:10px;
-  padding:12px;
-}
-
-.actual {
-  background:#f9fafb;
-  border-radius:10px;
-  padding:12px;
-}
-
-.temp { color:#2563eb }
-.rh { color:#dc2626 }
-
-.vpd.green { color:#16a34a; font-weight:700 }
-.vpd.yellow { color:#ca8a04; font-weight:700 }
-.vpd.red { color:#dc2626; font-weight:700 }
-
-.small { font-size:13px; opacity:.8 }
-
-.hidden { display:none }
-
-.back {
-  background:#444;
-}
+.temp { color: #2563eb; font-weight: 600; }
+.rh { color: #dc2626; font-weight: 600; }
+.vpd.good { color: #16a34a; font-weight: 700; }
+.vpd.warn { color: #ca8a04; font-weight: 700; }
+.vpd.bad { color: #dc2626; font-weight: 700; }
+.small { font-size: 14px; opacity: 0.8; }
+.row { display: flex; gap: 12px; }
+.col { flex: 1; }
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
+.hidden { display: none; }
 </style>
 </head>
 
@@ -84,170 +56,159 @@ button {
 <h1>Room Cycle Tracker</h1>
 
 <div class="card">
-<label>Facility</label>
-<select id="facility">
-  <option>True Leaf</option>
-  <option>Motor City</option>
-  <option>El Roya</option>
-</select>
+  <label>Active SOP</label>
+  <select id="sopSelect"></select>
+  <button onclick="toggleSopEditor()">Create / Edit SOP</button>
+</div>
+
+<div class="card hidden" id="sopEditor"></div>
+
+<div class="card">
+  <h3>Add Room</h3>
+  <input id="roomName" placeholder="Room name / number">
+  <input id="plantCount" placeholder="Plant count" type="number">
+  <label>Start Date</label>
+  <input id="startDate" type="date">
+  <label>Light Schedule</label>
+  <select id="lightSchedule">
+    <option value="12">12 / 12</option>
+    <option value="18">18 / 6</option>
+  </select>
+  <button onclick="addRoom()">Add Room</button>
 </div>
 
 <div class="card">
-<label>Active SOP</label>
-<select id="sopSelect"></select>
-<button onclick="toggleSopEditor()">Create / Edit SOP</button>
+  <h3>Rooms</h3>
+  <div id="rooms"></div>
 </div>
 
-<div class="card hidden" id="sopEditor">
-<h2>SOP Editor</h2>
-<div id="sopWeeks"></div>
-<button onclick="saveSOP()">Save SOP</button>
-</div>
-
-<div class="card">
-<h2>Add Room</h2>
-<label>Room</label>
-<input id="roomName">
-<label>Plant Count</label>
-<input id="plantCount" type="number">
-<label>Start Date</label>
-<input id="startDate" type="date">
-<button onclick="addRoom()">Add Room</button>
-</div>
-
-<div class="card">
-<h2>Rooms</h2>
-<div id="rooms"></div>
-</div>
-
-<div class="card hidden" id="roomView">
-<button class="back" onclick="closeRoom()">← Back</button>
-<h2 id="roomTitle"></h2>
-<div id="roomWeeks"></div>
-</div>
+<div class="card hidden" id="roomDetail"></div>
 
 <script>
-const SOP_RANGES = { min:1.0, max:1.4 }
-
-function calcVPD(t, rh){
-  const es = 0.6108 * Math.exp((17.27 * t)/(t+237.3))
-  return ((1 - rh/100) * es).toFixed(2)
+/* ---------- VPD ---------- */
+function calcVPD(tempF, rh) {
+  const tempC = (tempF - 32) * 5 / 9;
+  const es = 0.6108 * Math.exp((17.27 * tempC) / (tempC + 237.3));
+  const ea = es * (rh / 100);
+  return +(es - ea).toFixed(2);
+}
+function vpdClass(vpd, min, max) {
+  if (vpd >= min && vpd <= max) return 'good';
+  if (vpd >= min - 0.2 && vpd <= max + 0.2) return 'warn';
+  return 'bad';
 }
 
-function vpdClass(v){
-  if(v>=SOP_RANGES.min && v<=SOP_RANGES.max) return 'green'
-  if(v>=0.8 && v<=1.6) return 'yellow'
-  return 'red'
-}
-
-let sops = {
-  "True Leaf Fire": {
-    weeks: [
-      { day:{t:82,rh:72,co2:1000}, night:{t:78,rh:70,co2:1000} },
-      { day:{t:82,rh:72,co2:1000}, night:{t:78,rh:70,co2:1000} },
-      { day:{t:82,rh:72,co2:1000}, night:{t:78,rh:70,co2:1000} },
-      { day:{t:80,rh:68,co2:1200}, night:{t:70,rh:55,co2:1200} },
-      { day:{t:78,rh:66,co2:1200}, night:{t:70,rh:55,co2:1200} },
-      { day:{t:77,rh:65,co2:1200}, night:{t:68,rh:55,co2:1200} }
-    ]
+/* ---------- SOP ---------- */
+const SOP = {
+  name: "True Leaf Fire",
+  weeks: {
+    1:{d:{t:82,r:72,c:1000},n:{t:78,r:70,c:1000},v:[1.0,1.4]},
+    2:{d:{t:82,r:72,c:1000},n:{t:78,r:70,c:1000},v:[1.0,1.4]},
+    3:{d:{t:82,r:72,c:1000},n:{t:78,r:70,c:1000},v:[1.0,1.4]},
+    4:{d:{t:80,r:68,c:1200},n:{t:70,r:55,c:1200},v:[1.2,1.6]},
+    5:{d:{t:78,r:66,c:1200},n:{t:70,r:55,c:1200},v:[1.2,1.6]},
+    6:{d:{t:77,r:65,c:1200},n:{t:68,r:55,c:1200},v:[1.2,1.6]},
+    7:{d:{t:74,r:55,c:800}, n:{t:67,r:40,c:800}, v:[1.2,1.6]},
+    8:{d:{t:74,r:50,c:null},n:{t:65,r:35,c:null},v:[1.2,1.6]},
+    9:{d:{t:74,r:50,c:null},n:{t:65,r:35,c:null},v:[1.2,1.6]}
   }
-}
+};
 
-let rooms = []
-let activeRoom = null
+let rooms = JSON.parse(localStorage.getItem('rooms')||'[]');
 
-function init(){
-  const s = document.getElementById('sopSelect')
-  s.innerHTML = Object.keys(sops).map(n=>`<option>${n}</option>`).join('')
-}
-init()
+document.getElementById('sopSelect').innerHTML =
+  `<option>${SOP.name}</option>`;
 
+/* ---------- SOP Editor ---------- */
 function toggleSopEditor(){
-  const e=document.getElementById('sopEditor')
-  e.classList.toggle('hidden')
-  renderSopEditor()
+  const el = document.getElementById('sopEditor');
+  el.classList.toggle('hidden');
+  if(!el.classList.contains('hidden')) renderSopEditor();
 }
 
 function renderSopEditor(){
-  const name=document.getElementById('sopSelect').value
-  const w=document.getElementById('sopWeeks')
-  w.innerHTML=''
-  sops[name].weeks.forEach((wk,i)=>{
-    w.innerHTML+=`
-      <div class="card">
-      <h3>Week ${i+1}</h3>
-      Day: <input value="${wk.day.t}"> <input value="${wk.day.rh}"> <input value="${wk.day.co2}">
-      Night: <input value="${wk.night.t}"> <input value="${wk.night.rh}"> <input value="${wk.night.co2}">
-      </div>`
-  })
+  let html = `<h3>SOP Editor – ${SOP.name}</h3>`;
+  Object.keys(SOP.weeks).forEach(w=>{
+    const wk = SOP.weeks[w];
+    const vpdD = calcVPD(wk.d.t, wk.d.r);
+    const vpdN = calcVPD(wk.n.t, wk.n.r);
+    html += `
+    <div class="card">
+      <strong>Week ${w}</strong>
+      <div class="row">
+        <div class="col">
+          <div class="temp">Day ${wk.d.t}°F</div>
+          <div class="rh">${wk.d.r}% RH</div>
+          <div>CO₂ ${wk.d.c ?? 'Ambient'}</div>
+          <div class="vpd ${vpdClass(vpdD,wk.v[0],wk.v[1])}">
+            VPD ${vpdD}
+          </div>
+        </div>
+        <div class="col">
+          <div class="temp">Night ${wk.n.t}°F</div>
+          <div class="rh">${wk.n.r}% RH</div>
+          <div>CO₂ ${wk.n.c ?? 'Ambient'}</div>
+          <div class="vpd ${vpdClass(vpdN,wk.v[0],wk.v[1])}">
+            VPD ${vpdN}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('sopEditor').innerHTML = html;
 }
 
-function saveSOP(){ alert('SOP saved') }
-
+/* ---------- Rooms ---------- */
 function addRoom(){
-  const r={
-    name:roomName.value,
-    plants:plantCount.value,
-    start:startDate.value,
-    sop:sopSelect.value,
-    logs:[]
-  }
-  rooms.push(r)
-  renderRooms()
+  const name = roomName.value;
+  const plants = plantCount.value;
+  const start = startDate.value;
+  if(!name || !plants || !start) return alert("Fill all fields");
+  rooms.push({name,plants,start});
+  localStorage.setItem('rooms',JSON.stringify(rooms));
+  renderRooms();
 }
 
 function renderRooms(){
-  roomsDiv.innerHTML=''
+  roomsEl = document.getElementById('rooms');
+  roomsEl.innerHTML='';
   rooms.forEach((r,i)=>{
-    roomsDiv.innerHTML+=`
-      <div class="card">
-      <b>${r.name}</b><br>
-      SOP: ${r.sop}<br>
-      Plants: ${r.plants}<br>
-      <button onclick="openRoom(${i})">View Room</button>
-      </div>`
-  })
-}
-
-function openRoom(i){
-  activeRoom=i
-  document.getElementById('roomView').classList.remove('hidden')
-  renderRoom()
-}
-
-function closeRoom(){
-  document.getElementById('roomView').classList.add('hidden')
-}
-
-function renderRoom(){
-  const r=rooms[activeRoom]
-  roomTitle.innerText=r.name
-  roomWeeks.innerHTML=''
-  const sop=sops[r.sop]
-
-  sop.weeks.forEach((wk,i)=>{
-    const vpd=calcVPD(wk.day.t,wk.day.rh)
-    roomWeeks.innerHTML+=`
+    roomsEl.innerHTML += `
     <div class="card">
-      <h3>Week ${i+1}</h3>
-      <div class="row">
-        <div class="col target">
-          <b>Target DAY</b><br>
-          <span class="temp">${wk.day.t}°F</span> /
-          <span class="rh">${wk.day.rh}%</span> /
-          ${wk.day.co2}ppm<br>
-          <span class="vpd ${vpdClass(vpd)}">VPD ${vpd}</span>
-        </div>
-        <div class="col actual">
-          <b>Actual</b><br>
-          <input placeholder="Temp">
-          <input placeholder="RH">
-          <input placeholder="CO₂">
-          <div class="small">Timestamp auto</div>
-        </div>
-      </div>
-    </div>`
-  })
+      <strong>${r.name}</strong><br>
+      SOP: ${SOP.name}<br>
+      Plants: ${r.plants}
+      <button onclick="viewRoom(${i})">View Room</button>
+    </div>`;
+  });
+}
+renderRooms();
+
+/* ---------- Room View ---------- */
+function viewRoom(i){
+  const r = rooms[i];
+  const el = document.getElementById('roomDetail');
+  el.classList.remove('hidden');
+  let html = `<button onclick="elBack()">← Back</button><h3>${r.name}</h3>`;
+  Object.keys(SOP.weeks).forEach(w=>{
+    const wk = SOP.weeks[w];
+    const vpd = calcVPD(wk.d.t,wk.d.r);
+    html += `
+    <div class="card">
+      <strong>Week ${w} – DAY</strong><br>
+      <span class="temp">${wk.d.t}°F</span> /
+      <span class="rh">${wk.d.r}%</span> /
+      ${wk.d.c ?? 'Ambient'} ppm<br>
+      <span class="vpd ${vpdClass(vpd,wk.v[0],wk.v[1])}">
+        VPD ${vpd}
+      </span>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function elBack(){
+  document.getElementById('roomDetail').classList.add('hidden');
 }
 </script>
 
