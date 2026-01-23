@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Room Cycle Tracker</title>
+<title>Room Cycle Tracker v1.4</title>
 
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f4f6fb;margin:0;padding:16px}
@@ -13,24 +13,22 @@ label{font-weight:600;display:block;margin-top:8px}
 select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 button.secondary{background:#374151}
-button.small{padding:6px;font-size:13px}
-.room{border-top:1px solid #eee;padding-top:10px;margin-top:10px}
+.hidden{display:none}
+.small{font-size:13px;color:#555}
 .row{display:flex;gap:12px}
 .col{flex:1}
 .target{background:#eef5ff;border-radius:8px;padding:8px}
 .actual{background:#f9f9f9;border-radius:8px;padding:8px}
-.small{font-size:13px;color:#555}
-.hidden{display:none}
-.back{background:#e5e7eb;color:#111;margin-bottom:12px}
-.sop-badge{display:inline-block;background:#111827;color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;margin-bottom:6px}
-.log-label{font-size:12px;font-weight:700;color:#374151;margin-bottom:4px}
 
-.vpd-green{color:#16a34a;font-weight:700}
-.vpd-yellow{color:#ca8a04;font-weight:700}
-.vpd-red{color:#dc2626;font-weight:700}
+.temp{color:#2563eb;font-weight:600}
+.rh{color:#b91c1c;font-weight:600}
+.vpd-good{color:#16a34a;font-weight:700}
+.vpd-warn{color:#ca8a04;font-weight:700}
+.vpd-bad{color:#dc2626;font-weight:700}
 
-.temp-blue{color:#2563eb;font-weight:600}
-.rh-red{color:#b91c1c;font-weight:600}
+.day-row{padding:8px;border-bottom:1px solid #eee}
+.today{background:#e0f2fe;border-radius:8px}
+.locked{opacity:.6}
 </style>
 </head>
 
@@ -39,7 +37,6 @@ button.small{padding:6px;font-size:13px}
 <h1>Room Cycle Tracker</h1>
 
 <div id="dashboard">
-
 <div class="card">
 <label>Facility</label>
 <select id="facility" onchange="renderRooms()">
@@ -47,18 +44,6 @@ button.small{padding:6px;font-size:13px}
 <option>Motor City</option>
 <option>El Roya</option>
 </select>
-</div>
-
-<div class="card">
-<label>Active SOP</label>
-<select id="sopSelect"></select>
-<button onclick="toggleSopEditor()">Create / Edit SOP</button>
-</div>
-
-<div class="card hidden" id="sopEditor">
-<label>SOP Name</label>
-<input id="sopName">
-<div id="sopWeeks"></div>
 </div>
 
 <div class="card">
@@ -79,208 +64,160 @@ button.small{padding:6px;font-size:13px}
 <h3>Rooms</h3>
 <div id="rooms"></div>
 </div>
-
 </div>
 
 <div id="roomView" class="hidden">
-<button class="back" onclick="back()">← Back</button>
+<button class="secondary" onclick="back()">← Back</button>
 <div id="roomDetail"></div>
 </div>
 
 <script>
-/* -------------------- STORAGE -------------------- */
-let store=JSON.parse(localStorage.getItem("RCT_PROD"))||{facilities:{},sops:{},activeSop:null};
-function save(){localStorage.setItem("RCT_PROD",JSON.stringify(store))}
+/* ---------- STORAGE ---------- */
+let store = JSON.parse(localStorage.getItem("RCT_V14")) || {
+  facilities:{},
+  sops:{},
+  meta:{version:"1.4"}
+};
 
-/* -------------------- VPD -------------------- */
+function save(){localStorage.setItem("RCT_V14",JSON.stringify(store))}
+
+/* ---------- VPD ---------- */
 function calcVPD(tF,rh){
   let c=(tF-32)*5/9;
   let es=0.6108*Math.exp((17.27*c)/(c+237.3));
   return +(es*(1-rh/100)).toFixed(2);
 }
-function vpdClass(actual,target){
-  let d=Math.abs(actual-target);
-  if(d<=0.10)return"vpd-green";
-  if(d<=0.25)return"vpd-yellow";
-  return"vpd-red";
+function vpdClass(a,t){
+  let d=Math.abs(a-t);
+  if(d<=0.10)return"vpd-good";
+  if(d<=0.25)return"vpd-warn";
+  return"vpd-bad";
 }
 
-/* -------------------- DEFAULT SOP -------------------- */
+/* ---------- DEFAULT SOP ---------- */
 if(!store.sops["True Leaf Fire"]){
 store.sops["True Leaf Fire"]={
 name:"True Leaf Fire",
-weeks:[
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
-{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
-{day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}},
-{day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}}
-]};
-store.activeSop="True Leaf Fire";
+weeks:{
+1:{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+2:{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+3:{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
+4:{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
+5:{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
+6:{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
+7:{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
+8:{day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}},
+9:{day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}}
+}};
 save();
 }
 
-/* -------------------- SOP UI -------------------- */
-const sopSelect=document.getElementById("sopSelect");
-function loadSops(){
-sopSelect.innerHTML="";
-Object.keys(store.sops).forEach(s=>{
-let o=document.createElement("option");
-o.value=s;o.textContent=s;
-sopSelect.appendChild(o);
-});
-sopSelect.value=store.activeSop;
-}
-loadSops();
-
-function toggleSopEditor(){
-document.getElementById("sopEditor").classList.toggle("hidden");
-renderSopEditor();
+/* ---------- HELPERS ---------- */
+function daysBetween(a,b){return Math.floor((b-a)/86400000)}
+function currentPeriod(l){
+let h=new Date().getHours();
+return l==="18"? (h>=6?"day":"night") : (h>=6&&h<18?"day":"night");
 }
 
-function renderSopEditor(){
-let sop=store.sops[store.activeSop];
-document.getElementById("sopName").value=sop.name;
-let d=document.getElementById("sopWeeks"); d.innerHTML="";
-sop.weeks.forEach((w,i)=>{
-let dv=calcVPD(w.day.t,w.day.rh);
-let nv=calcVPD(w.night.t,w.night.rh);
-d.innerHTML+=`
-<h4>Week ${i+1}</h4>
-<div class="row">
-<div class="col target">
-<strong>Day</strong>
-<input value="${w.day.t}" oninput="updateSop(${i},'day','t',this.value)">
-<input value="${w.day.rh}" oninput="updateSop(${i},'day','rh',this.value)">
-<input value="${w.day.co2}" oninput="updateSop(${i},'day','co2',this.value)">
-<div id="dv${i}" class="vpd-green">VPD ${dv}</div>
-<button class="small" onclick="saveWeek(${i})">Save Week</button>
-</div>
-<div class="col target">
-<strong>Night</strong>
-<input value="${w.night.t}" oninput="updateSop(${i},'night','t',this.value)">
-<input value="${w.night.rh}" oninput="updateSop(${i},'night','rh',this.value)">
-<input value="${w.night.co2}" oninput="updateSop(${i},'night','co2',this.value)">
-<div id="nv${i}" class="vpd-green">VPD ${nv}</div>
-</div>
-</div>`;
-});
-}
-
-function updateSop(i,period,field,val){
-store.sops[store.activeSop].weeks[i][period][field]=Number(val)||val;
-let w=store.sops[store.activeSop].weeks[i][period];
-if(w.t&&w.rh){
-let v=calcVPD(w.t,w.rh);
-document.getElementById((period==="day"?"dv":"nv")+i).textContent=`VPD ${v}`;
-}
-save();
-}
-
-function saveWeek(i){
-save();
-alert(`Week ${i+1} saved`);
-}
-
-/* -------------------- ROOMS -------------------- */
-function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
-function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
-function isDay(l){let h=new Date().getHours();return l==="18"?h>=6:h>=6&&h<18}
-
+/* ---------- ROOM CREATION ---------- */
 function addRoom(){
-if(!store.activeSop)return alert("Select SOP first");
 let fac=facility.value;
 if(!store.facilities[fac])store.facilities[fac]=[];
 let start=new Date(startDate.value).getTime();
 if(!start)return alert("Start date required");
+
+let timeline={weeks:{}};
+for(let w=1;w<=9;w++){
+timeline.weeks[w]={days:{}};
+for(let d=1;d<=7;d++){
+timeline.weeks[w].days[d]={day:{},night:{}};
+}
+}
+
 store.facilities[fac].push({
 name:roomName.value,
 plants:plantCount.value,
 lights:lights.value,
 start,
-sopName:store.activeSop,
-sop:JSON.parse(JSON.stringify(store.sops[store.activeSop])),
-logs:{}
+sop:"True Leaf Fire",
+timeline
 });
-save(); renderRooms();
+save();renderRooms();
 }
 
+/* ---------- DASHBOARD ---------- */
 function renderRooms(){
 let fac=facility.value;
-let cont=document.getElementById("rooms");
-cont.innerHTML="";
+let c=document.getElementById("rooms");
+c.innerHTML="";
 (store.facilities[fac]||[]).forEach((r,i)=>{
-let w=weekFrom(r.start);
-let dn=isDay(r.lights)?"day":"night";
-let t=r.sop.weeks[w-1][dn];
-let tv=calcVPD(t.t,t.rh);
-cont.innerHTML+=`
-<div class="room">
-<div class="sop-badge">${r.sopName}</div>
+let ds=daysBetween(r.start,Date.now());
+let week=Math.min(9,Math.floor(ds/7)+1);
+let day=(ds%7)+1;
+let period=currentPeriod(r.lights);
+let t=store.sops[r.sop].weeks[week][period];
+let vpd=calcVPD(t.t,t.rh);
+c.innerHTML+=`
+<div class="card">
 <strong>${r.name}</strong>
-<div class="small">Week ${w}, Day ${dayInWeek(r.start)} (${dn})</div>
+<div class="small">Week ${week} · Day ${day} · ${period.toUpperCase()}</div>
 <div>
-<span class="temp-blue">${t.t}°F</span> •
-<span class="rh-red">${t.rh}%</span> •
-${t.co2} •
-<span class="vpd-green">VPD ${tv}</span>
+<span class="temp">${t.t}°F</span> ·
+<span class="rh">${t.rh}%</span> ·
+${t.co2} ·
+<span class="vpd-good">VPD ${vpd}</span>
 </div>
-<button class="secondary" onclick="openRoom('${fac}',${i})">View Room</button>
+<button onclick="openRoom('${fac}',${i})">View Room</button>
 </div>`;
 });
 }
 
-/* -------------------- ROOM DETAIL -------------------- */
+/* ---------- ROOM VIEW ---------- */
 function openRoom(f,i){
 dashboard.classList.add("hidden");
 roomView.classList.remove("hidden");
 let r=store.facilities[f][i];
+let ds=daysBetween(r.start,Date.now());
+let week=Math.min(9,Math.floor(ds/7)+1);
+let day=(ds%7)+1;
+let period=currentPeriod(r.lights);
 let d=document.getElementById("roomDetail");
-d.innerHTML=`<h2>${r.name}</h2><div class="small">SOP: ${r.sopName}</div>`;
-r.sop.weeks.forEach((w,wi)=>{
-["day","night"].forEach(p=>{
-let key=`${wi}-${p}`;
-let log=r.logs[key]||{};
-let av=log.t&&log.rh?calcVPD(log.t,log.rh):null;
-let tv=calcVPD(w[p].t,w[p].rh);
+d.innerHTML=`<h2>${r.name}</h2>
+<div class="small">Week ${week} · Day ${day} · ${period.toUpperCase()}</div>`;
+
+for(let w=1;w<=9;w++){
+d.innerHTML+=`<div class="card"><strong>Week ${w}</strong>`;
+for(let da=1;da<=7;da++){
+let isToday=(w===week&&da===day);
+let slot=r.timeline.weeks[w].days[da][period];
+let target=store.sops[r.sop].weeks[w][period];
+let tv=calcVPD(target.t,target.rh);
+let av=slot.temp?calcVPD(slot.temp,slot.rh):null;
 d.innerHTML+=`
-<div class="card">
-<h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
+<div class="day-row ${isToday?'today':''}">
+Day ${da}
+${isToday&&!slot.locked?`
 <div class="row">
 <div class="col target">
-<span class="temp-blue">${w[p].t}°F</span> /
-<span class="rh-red">${w[p].rh}%</span> /
-${w[p].co2}<br>
+<span class="temp">${target.t}°F</span><br>
+<span class="rh">${target.rh}%</span><br>
 VPD ${tv}
 </div>
 <div class="col actual">
-<input placeholder="Temp" value="${log.t||""}" onchange="logVal('${f}',${i},'${key}','t',this.value)">
-<input placeholder="RH" value="${log.rh||""}" onchange="logVal('${f}',${i},'${key}','rh',this.value)">
-<input placeholder="CO₂" value="${log.co2||""}" onchange="logVal('${f}',${i},'${key}','co2',this.value)">
-<button onclick="saveLog('${f}',${i},'${key}')">Save Entry</button>
+<input placeholder="Temp" onchange="slot.temp=this.value">
+<input placeholder="RH" onchange="slot.rh=this.value">
+<input placeholder="CO₂" onchange="slot.co2=this.value">
 ${av?`<div class="${vpdClass(av,tv)}">VPD ${av}</div>`:""}
+<button onclick="slot.locked=true;save();openRoom('${f}',${i})">Save</button>
 </div>
-</div>
+</div>`:
+(slot.locked?`Logged`:``)}
 </div>`;
-});
-});
+}
+d.innerHTML+=`</div>`;
+}
 }
 
-function logVal(f,i,k,field,val){
-store.facilities[f][i].logs[k]=store.facilities[f][i].logs[k]||{};
-store.facilities[f][i].logs[k][field]=Number(val);
-}
-function saveLog(f,i,k){
-let log=store.facilities[f][i].logs[k];
-if(log.t==null||log.rh==null||log.co2==null)return alert("Enter Temp, RH, CO₂");
-log.vpd=calcVPD(log.t,log.rh);
-log.ts=new Date().toISOString();
-save(); openRoom(f,i);
-}
 function back(){
 roomView.classList.add("hidden");
 dashboard.classList.remove("hidden");
