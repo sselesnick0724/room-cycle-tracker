@@ -1,3 +1,5 @@
+Cycle tracker 1.2
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,7 +15,6 @@ label{font-weight:600;display:block;margin-top:8px}
 select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 button.secondary{background:#374151}
-button.small{padding:6px;font-size:13px}
 .room{border-top:1px solid #eee;padding-top:10px;margin-top:10px}
 .row{display:flex;gap:12px}
 .col{flex:1}
@@ -59,6 +60,7 @@ button.small{padding:6px;font-size:13px}
 <label>SOP Name</label>
 <input id="sopName">
 <div id="sopWeeks"></div>
+<button onclick="saveSOP()">Save SOP</button>
 </div>
 
 <div class="card">
@@ -142,48 +144,44 @@ document.getElementById("sopEditor").classList.toggle("hidden");
 renderSopEditor();
 }
 
+function updateSopVPD(vpdId,tId,rhId){
+let t=document.getElementById(tId).value;
+let rh=document.getElementById(rhId).value;
+document.getElementById(vpdId).textContent=t&&rh?`VPD ${calcVPD(t,rh)}`:"VPD —";
+}
+
 function renderSopEditor(){
 let sop=store.sops[store.activeSop];
 document.getElementById("sopName").value=sop.name;
 let d=document.getElementById("sopWeeks"); d.innerHTML="";
 sop.weeks.forEach((w,i)=>{
-let dv=calcVPD(w.day.t,w.day.rh);
-let nv=calcVPD(w.night.t,w.night.rh);
 d.innerHTML+=`
 <h4>Week ${i+1}</h4>
 <div class="row">
 <div class="col target">
 <strong>Day</strong>
-<input value="${w.day.t}" oninput="updateSop(${i},'day','t',this.value)">
-<input value="${w.day.rh}" oninput="updateSop(${i},'day','rh',this.value)">
-<input value="${w.day.co2}" oninput="updateSop(${i},'day','co2',this.value)">
-<div id="dv${i}" class="vpd-green">VPD ${dv}</div>
-<button class="small" onclick="saveWeek(${i})">Save Week</button>
+<input id="dt${i}" value="${w.day.t}" onchange="w.day.t=this.value;updateSopVPD('dv${i}','dt${i}','dr${i}')">
+<input id="dr${i}" value="${w.day.rh}" onchange="w.day.rh=this.value;updateSopVPD('dv${i}','dt${i}','dr${i}')">
+<input value="${w.day.co2}" onchange="w.day.co2=this.value">
+<div id="dv${i}" class="vpd-green">VPD ${calcVPD(w.day.t,w.day.rh)}</div>
 </div>
 <div class="col target">
 <strong>Night</strong>
-<input value="${w.night.t}" oninput="updateSop(${i},'night','t',this.value)">
-<input value="${w.night.rh}" oninput="updateSop(${i},'night','rh',this.value)">
-<input value="${w.night.co2}" oninput="updateSop(${i},'night','co2',this.value)">
-<div id="nv${i}" class="vpd-green">VPD ${nv}</div>
+<input id="nt${i}" value="${w.night.t}" onchange="w.night.t=this.value;updateSopVPD('nv${i}','nt${i}','nr${i}')">
+<input id="nr${i}" value="${w.night.rh}" onchange="w.night.rh=this.value;updateSopVPD('nv${i}','nt${i}','nr${i}')">
+<input value="${w.night.co2}" onchange="w.night.co2=this.value">
+<div id="nv${i}" class="vpd-green">VPD ${calcVPD(w.night.t,w.night.rh)}</div>
 </div>
 </div>`;
 });
 }
 
-function updateSop(i,period,field,val){
-store.sops[store.activeSop].weeks[i][period][field]=Number(val)||val;
-let w=store.sops[store.activeSop].weeks[i][period];
-if(w.t&&w.rh){
-let v=calcVPD(w.t,w.rh);
-document.getElementById((period==="day"?"dv":"nv")+i).textContent=`VPD ${v}`;
-}
-save();
-}
-
-function saveWeek(i){
-save();
-alert(`Week ${i+1} saved`);
+function saveSOP(){
+let name=document.getElementById("sopName").value;
+store.sops[name]=JSON.parse(JSON.stringify(store.sops[store.activeSop]));
+store.activeSop=name;
+save(); loadSops();
+document.getElementById("sopEditor").classList.add("hidden");
 }
 
 /* -------------------- ROOMS -------------------- */
@@ -206,7 +204,7 @@ sopName:store.activeSop,
 sop:JSON.parse(JSON.stringify(store.sops[store.activeSop])),
 logs:{}
 });
-save(); reenderRooms();
+save(); renderRooms();
 }
 
 function renderRooms(){
@@ -258,11 +256,16 @@ ${w[p].co2}<br>
 VPD ${tv}
 </div>
 <div class="col actual">
-<input placeholder="Temp" value="${log.t||""}" onchange="logVal('${f}',${i},'${key}','t',this.value)">
-<input placeholder="RH" value="${log.rh||""}" onchange="logVal('${f}',${i},'${key}','rh',this.value)">
-<input placeholder="CO₂" value="${log.co2||""}" onchange="logVal('${f}',${i},'${key}','co2',this.value)">
-<button onclick="saveLog('${f}',${i},'${key}')">Save Entry</button>
+<div class="log-label">Daily Measurement</div>
+<div class="small">${log.ts?new Date(log.ts).toLocaleString():"—"}</div>
+<input ${log.locked?"disabled":""} placeholder="Temp" value="${log.t||""}" onchange="logVal('${f}',${i},'${key}','t',this.value)">
+<input ${log.locked?"disabled":""} placeholder="RH" value="${log.rh||""}" onchange="logVal('${f}',${i},'${key}','rh',this.value)">
+<input ${log.locked?"disabled":""} placeholder="CO₂" value="${log.co2||""}" onchange="logVal('${f}',${i},'${key}','co2',this.value)">
 ${av?`<div class="${vpdClass(av,tv)}">VPD ${av}</div>`:""}
+${log.locked
+? `<button class="secondary" onclick="editLog('${f}',${i},'${key}')">Edit</button>`
+: `<button onclick="saveLog('${f}',${i},'${key}')">Save Entry</button>`
+}
 </div>
 </div>
 </div>`;
@@ -278,7 +281,12 @@ function saveLog(f,i,k){
 let log=store.facilities[f][i].logs[k];
 if(log.t==null||log.rh==null||log.co2==null)return alert("Enter Temp, RH, CO₂");
 log.vpd=calcVPD(log.t,log.rh);
+log.locked=true;
 log.ts=new Date().toISOString();
+save(); openRoom(f,i);
+}
+function editLog(f,i,k){
+store.facilities[f][i].logs[k].locked=false;
 save(); openRoom(f,i);
 }
 function back(){
