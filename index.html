@@ -13,23 +13,21 @@ label{font-weight:600;display:block;margin-top:8px}
 select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 button.secondary{background:#374151}
-.room{border-top:1px solid #eee;padding-top:10px;margin-top:10px}
+button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
+button.danger{background:#b91c1c}
 .row{display:flex;gap:12px}
 .col{flex:1}
 .target{background:#eef5ff;border-radius:8px;padding:8px}
 .actual{background:#f9f9f9;border-radius:8px;padding:8px}
 .small{font-size:13px;color:#555}
 .hidden{display:none}
-.back{background:#e5e7eb;color:#111;margin-bottom:12px}
 .sop-badge{display:inline-block;background:#111827;color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;margin-bottom:6px}
-.log-label{font-size:12px;font-weight:700;color:#374151;margin-bottom:4px}
-
+.temp-blue{color:#2563eb;font-weight:600}
+.rh-red{color:#b91c1c;font-weight:600}
 .vpd-green{color:#16a34a;font-weight:700}
 .vpd-yellow{color:#ca8a04;font-weight:700}
 .vpd-red{color:#dc2626;font-weight:700}
-
-.temp-blue{color:#2563eb;font-weight:600}
-.rh-red{color:#b91c1c;font-weight:600}
+.current{font-weight:800}
 </style>
 </head>
 
@@ -54,11 +52,12 @@ button.secondary{background:#374151}
 <button onclick="toggleSopEditor()">Create / Edit SOP</button>
 </div>
 
-<div class="card hidden" id="sopEditor">
+<div id="sopEditor" class="card hidden">
 <label>SOP Name</label>
 <input id="sopName">
 <div id="sopWeeks"></div>
 <button onclick="saveSOP()">Save SOP</button>
+<button class="secondary" onclick="toggleSopEditor()">Cancel</button>
 </div>
 
 <div class="card">
@@ -88,24 +87,36 @@ button.secondary{background:#374151}
 </div>
 
 <script>
-/* -------------------- STORAGE -------------------- */
-let store=JSON.parse(localStorage.getItem("RCT_PROD"))||{facilities:{},sops:{},activeSop:null};
+/* ================= STORAGE ================= */
+let store = JSON.parse(localStorage.getItem("RCT_PROD")) || {
+  facilities:{},
+  sops:{},
+  activeSop:null
+};
 function save(){localStorage.setItem("RCT_PROD",JSON.stringify(store))}
 
-/* -------------------- VPD -------------------- */
+/* ================= VPD ================= */
 function calcVPD(tF,rh){
-  let c=(tF-32)*5/9;
-  let es=0.6108*Math.exp((17.27*c)/(c+237.3));
+  const c=(tF-32)*5/9;
+  const es=0.6108*Math.exp((17.27*c)/(c+237.3));
   return +(es*(1-rh/100)).toFixed(2);
 }
 function vpdClass(actual,target){
-  let d=Math.abs(actual-target);
+  const d=Math.abs(actual-target);
   if(d<=0.10)return"vpd-green";
   if(d<=0.25)return"vpd-yellow";
   return"vpd-red";
 }
 
-/* -------------------- DEFAULT SOP -------------------- */
+/* ================= TIME ================= */
+function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
+function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
+function isDay(l){
+  const h=new Date().getHours();
+  return l==="18"?h>=6:h>=6&&h<18;
+}
+
+/* ================= DEFAULT SOP ================= */
 if(!store.sops["True Leaf Fire"]){
 store.sops["True Leaf Fire"]={
 name:"True Leaf Fire",
@@ -116,7 +127,7 @@ weeks:[
 {day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
 {day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
 {day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
-{day:{t:74,rh:55,co2:800}, night:{t:67,rh:40,co2:800}},
+{day:{t:74,rh:55,co2:800},night:{t:67,rh:40,co2:800}},
 {day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}},
 {day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}}
 ]};
@@ -124,7 +135,7 @@ store.activeSop="True Leaf Fire";
 save();
 }
 
-/* -------------------- SOP UI -------------------- */
+/* ================= SOP UI ================= */
 const sopSelect=document.getElementById("sopSelect");
 function loadSops(){
 sopSelect.innerHTML="";
@@ -142,128 +153,119 @@ document.getElementById("sopEditor").classList.toggle("hidden");
 renderSopEditor();
 }
 
-function updateSopVPD(vpdId,tId,rhId){
-let t=document.getElementById(tId).value;
-let rh=document.getElementById(rhId).value;
-document.getElementById(vpdId).textContent=t&&rh?`VPD ${calcVPD(t,rh)}`:"VPD —";
-}
-
 function renderSopEditor(){
-let sop=store.sops[store.activeSop];
-document.getElementById("sopName").value=sop.name;
-let d=document.getElementById("sopWeeks"); d.innerHTML="";
+const sop=store.sops[store.activeSop];
+sopName.value=sop.name;
+sopWeeks.innerHTML="";
 sop.weeks.forEach((w,i)=>{
-d.innerHTML+=`
+const dv=calcVPD(w.day.t,w.day.rh);
+const nv=calcVPD(w.night.t,w.night.rh);
+sopWeeks.innerHTML+=`
 <h4>Week ${i+1}</h4>
 <div class="row">
 <div class="col target">
 <strong>Day</strong>
-<input id="dt${i}" value="${w.day.t}" onchange="w.day.t=this.value;updateSopVPD('dv${i}','dt${i}','dr${i}')">
-<input id="dr${i}" value="${w.day.rh}" onchange="w.day.rh=this.value;updateSopVPD('dv${i}','dt${i}','dr${i}')">
-<input value="${w.day.co2}" onchange="w.day.co2=this.value">
-<div id="dv${i}" class="vpd-green">VPD ${calcVPD(w.day.t,w.day.rh)}</div>
+<input value="${w.day.t}" oninput="w.day.t=this.value;renderSopEditor()">
+<input value="${w.day.rh}" oninput="w.day.rh=this.value;renderSopEditor()">
+<input value="${w.day.co2}">
+<div class="vpd-green">VPD ${dv}</div>
 </div>
 <div class="col target">
 <strong>Night</strong>
-<input id="nt${i}" value="${w.night.t}" onchange="w.night.t=this.value;updateSopVPD('nv${i}','nt${i}','nr${i}')">
-<input id="nr${i}" value="${w.night.rh}" onchange="w.night.rh=this.value;updateSopVPD('nv${i}','nt${i}','nr${i}')">
-<input value="${w.night.co2}" onchange="w.night.co2=this.value">
-<div id="nv${i}" class="vpd-green">VPD ${calcVPD(w.night.t,w.night.rh)}</div>
+<input value="${w.night.t}" oninput="w.night.t=this.value;renderSopEditor()">
+<input value="${w.night.rh}" oninput="w.night.rh=this.value;renderSopEditor()">
+<input value="${w.night.co2}">
+<div class="vpd-green">VPD ${nv}</div>
 </div>
 </div>`;
 });
 }
 
 function saveSOP(){
-let name=document.getElementById("sopName").value;
+const name=sopName.value.trim();
 store.sops[name]=JSON.parse(JSON.stringify(store.sops[store.activeSop]));
 store.activeSop=name;
-save(); loadSops();
-document.getElementById("sopEditor").classList.add("hidden");
+save();loadSops();
+toggleSopEditor();
 }
 
-/* -------------------- ROOMS -------------------- */
-function weekFrom(start){return Math.min(9,Math.floor((Date.now()-start)/604800000)+1)}
-function dayInWeek(start){return Math.floor((Date.now()-start)/86400000)%7+1}
-function isDay(l){let h=new Date().getHours();return l==="18"?h>=6:h>=6&&h<18}
-
+/* ================= ROOMS ================= */
 function addRoom(){
 if(!store.activeSop)return alert("Select SOP first");
-let fac=facility.value;
-if(!store.facilities[fac])store.facilities[fac]=[];
-let start=new Date(startDate.value).getTime();
+const fac=facility.value;
+store.facilities[fac]=store.facilities[fac]||[];
+const start=new Date(startDate.value).getTime();
 if(!start)return alert("Start date required");
 store.facilities[fac].push({
-name:roomName.value,
-plants:plantCount.value,
+name:roomName.value||"Room",
+plants:plantCount.value||0,
 lights:lights.value,
 start,
 sopName:store.activeSop,
 sop:JSON.parse(JSON.stringify(store.sops[store.activeSop])),
 logs:{}
 });
-save(); renderRooms();
+save();renderRooms();
 }
 
 function renderRooms(){
-let fac=facility.value;
-let cont=document.getElementById("rooms");
-cont.innerHTML="";
+const fac=facility.value;
+rooms.innerHTML="";
 (store.facilities[fac]||[]).forEach((r,i)=>{
-let w=weekFrom(r.start);
-let dn=isDay(r.lights)?"day":"night";
-let t=r.sop.weeks[w-1][dn];
-let tv=calcVPD(t.t,t.rh);
-cont.innerHTML+=`
-<div class="room">
+const w=weekFrom(r.start);
+const d=dayInWeek(r.start);
+const period=isDay(r.lights)?"day":"night";
+const t=r.sop.weeks[w-1][period];
+const tv=calcVPD(t.t,t.rh);
+rooms.innerHTML+=`
+<div class="card">
 <div class="sop-badge">${r.sopName}</div>
 <strong>${r.name}</strong>
-<div class="small">Week ${w}, Day ${dayInWeek(r.start)} (${dn})</div>
+<div class="small">Week ${w} · Day ${d} · ${period.toUpperCase()}</div>
 <div>
-<span class="temp-blue">${t.t}°F</span> •
-<span class="rh-red">${t.rh}%</span> •
-${t.co2} •
+<span class="temp-blue">${t.t}°F</span> ·
+<span class="rh-red">${t.rh}%</span> ·
+${t.co2} ·
 <span class="vpd-green">VPD ${tv}</span>
 </div>
-<button class="secondary" onclick="openRoom('${fac}',${i})">View Room</button>
+<button onclick="openRoom('${fac}',${i})">View Room</button>
 </div>`;
 });
 }
 
-/* -------------------- ROOM DETAIL -------------------- */
+/* ================= ROOM DETAIL ================= */
 function openRoom(f,i){
 dashboard.classList.add("hidden");
 roomView.classList.remove("hidden");
-let r=store.facilities[f][i];
-let d=document.getElementById("roomDetail");
-d.innerHTML=`<h2>${r.name}</h2><div class="small">SOP: ${r.sopName}</div>`;
-r.sop.weeks.forEach((w,wi)=>{
+const r=store.facilities[f][i];
+const w=weekFrom(r.start);
+const d=dayInWeek(r.start);
+const active=isDay(r.lights)?"day":"night";
+roomDetail.innerHTML=`<h2>${r.name}</h2>
+<div class="small">Week ${w} · Day ${d}</div>`;
+r.sop.weeks.forEach((wk,wi)=>{
 ["day","night"].forEach(p=>{
-let key=`${wi}-${p}`;
-let log=r.logs[key]||{};
-let av=log.t&&log.rh?calcVPD(log.t,log.rh):null;
-let tv=calcVPD(w[p].t,w[p].rh);
-d.innerHTML+=`
+const logKey=`${wi}-${p}`;
+const log=r.logs[logKey]||{};
+const tv=calcVPD(wk[p].t,wk[p].rh);
+const av=log.t&&log.rh?calcVPD(log.t,log.rh):null;
+roomDetail.innerHTML+=`
 <div class="card">
-<h4>Week ${wi+1} – ${p.toUpperCase()}</h4>
+<h4>Week ${wi+1} – ${p.toUpperCase()} ${p===active?"(CURRENT)":""}</h4>
 <div class="row">
 <div class="col target">
-<span class="temp-blue">${w[p].t}°F</span> /
-<span class="rh-red">${w[p].rh}%</span> /
-${w[p].co2}<br>
+<span class="temp-blue">${wk[p].t}°F</span> /
+<span class="rh-red">${wk[p].rh}%</span> /
+${wk[p].co2}<br>
 VPD ${tv}
 </div>
 <div class="col actual">
-<div class="log-label">Daily Measurement</div>
 <div class="small">${log.ts?new Date(log.ts).toLocaleString():"—"}</div>
-<input ${log.locked?"disabled":""} placeholder="Temp" value="${log.t||""}" onchange="logVal('${f}',${i},'${key}','t',this.value)">
-<input ${log.locked?"disabled":""} placeholder="RH" value="${log.rh||""}" onchange="logVal('${f}',${i},'${key}','rh',this.value)">
-<input ${log.locked?"disabled":""} placeholder="CO₂" value="${log.co2||""}" onchange="logVal('${f}',${i},'${key}','co2',this.value)">
+<input ${log.locked?"disabled":""} placeholder="Temp" value="${log.t||""}" onchange="logVal('${f}',${i},'${logKey}','t',this.value)">
+<input ${log.locked?"disabled":""} placeholder="RH" value="${log.rh||""}" onchange="logVal('${f}',${i},'${logKey}','rh',this.value)">
+<input ${log.locked?"disabled":""} placeholder="CO₂" value="${log.co2||""}" onchange="logVal('${f}',${i},'${logKey}','co2',this.value)">
 ${av?`<div class="${vpdClass(av,tv)}">VPD ${av}</div>`:""}
-${log.locked
-? `<button class="secondary" onclick="editLog('${f}',${i},'${key}')">Edit</button>`
-: `<button onclick="saveLog('${f}',${i},'${key}')">Save Entry</button>`
-}
+${log.locked?`<button class="secondary" onclick="editLog('${f}',${i},'${logKey}')">Edit</button>`:`<button onclick="saveLog('${f}',${i},'${logKey}')">Save Entry</button>`}
 </div>
 </div>
 </div>`;
@@ -276,16 +278,16 @@ store.facilities[f][i].logs[k]=store.facilities[f][i].logs[k]||{};
 store.facilities[f][i].logs[k][field]=Number(val);
 }
 function saveLog(f,i,k){
-let log=store.facilities[f][i].logs[k];
+const log=store.facilities[f][i].logs[k];
 if(log.t==null||log.rh==null||log.co2==null)return alert("Enter Temp, RH, CO₂");
 log.vpd=calcVPD(log.t,log.rh);
 log.locked=true;
 log.ts=new Date().toISOString();
-save(); openRoom(f,i);
+save();openRoom(f,i);
 }
 function editLog(f,i,k){
 store.facilities[f][i].logs[k].locked=false;
-save(); openRoom(f,i);
+save();openRoom(f,i);
 }
 function back(){
 roomView.classList.add("hidden");
