@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Room Cycle Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f4f6fb;margin:0;padding:16px}
@@ -14,6 +15,7 @@ select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;bord
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 button.secondary{background:#374151}
 button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
+button.small{padding:6px;font-size:13px}
 button.danger{background:#b91c1c}
 .small{font-size:13px;color:#555}
 .hidden{display:none}
@@ -192,14 +194,14 @@ days:{}
 save();renderRooms();
 }
 
-function getDayIndex(start){
+function dayIndex(start){
 return Math.floor((Date.now()-start)/86400000);
 }
 
 function renderRooms(){
 rooms.innerHTML="";
 store.facilities[facilitySel.value].rooms.forEach((r,i)=>{
-const d=getDayIndex(r.start);
+const d=dayIndex(r.start);
 const w=Math.min(8,Math.floor(d/7));
 const t=r.sop.weeks[w].day;
 rooms.innerHTML+=`
@@ -224,9 +226,9 @@ function openRoom(i){
 dashboard.classList.add("hidden");
 roomView.classList.remove("hidden");
 const r=store.facilities[facilitySel.value].rooms[i];
-const d=getDayIndex(r.start);
+const d=dayIndex(r.start);
 const w=Math.min(8,Math.floor(d/7));
-const t=r.sop.weeks[w].day;
+const target=r.sop.weeks[w].day;
 const log=r.days[d]?.day||{};
 roomDetail.innerHTML=`
 <h2>${r.name}</h2>
@@ -234,20 +236,28 @@ roomDetail.innerHTML=`
 
 <div class="card">
 <strong>Target</strong><br>
-<span class="temp-blue">${t.t}°F</span> /
-<span class="rh-red">${t.rh}%</span> /
-${t.co2} /
-<span class="vpd-green">VPD ${calcVPD(t.t,t.rh)}</span>
+<span class="temp-blue">${target.t}°F</span> /
+<span class="rh-red">${target.rh}%</span> /
+${target.co2} ·
+<span class="vpd-green">VPD ${calcVPD(target.t,target.rh)}</span>
 </div>
 
 <div class="card">
 <strong>Actual</strong><br>
 ${log.ts?`<div class="small">Logged ${new Date(log.ts).toLocaleString()}</div>`:""}
-<input placeholder="Temp" value="${log.t||""}" oninput="logTemp=${this?.value}">
-<input placeholder="RH" value="${log.rh||""}">
-<input placeholder="CO₂" value="${log.co2||""}">
-<button onclick="saveDay(${i})">Save</button>
-${log.vpd?`<div class="${vpdClass(log.vpd,calcVPD(t.t,t.rh))}">VPD ${log.vpd}</div>`:""}
+<input ${log.locked?"disabled":""} id="logT" placeholder="Temp" value="${log.t||""}">
+<input ${log.locked?"disabled":""} id="logRH" placeholder="RH" value="${log.rh||""}">
+<input ${log.locked?"disabled":""} id="logCO2" placeholder="CO₂" value="${log.co2||""}">
+${log.vpd?`<div class="${vpdClass(log.vpd,calcVPD(target.t,target.rh))}">VPD ${log.vpd}</div>`:""}
+${log.locked
+? `<button class="secondary" onclick="editLog(${i})">Edit ✍️</button>`
+: `<button onclick="saveDay(${i})">Save</button>`
+}
+</div>
+
+<div class="card">
+<button onclick="toggleChart()">📊 View Charts</button>
+<canvas id="vpdChart" class="hidden"></canvas>
 </div>
 
 <div class="card">
@@ -257,19 +267,52 @@ ${log.vpd?`<div class="${vpdClass(log.vpd,calcVPD(t.t,t.rh))}">VPD ${log.vpd}</d
 
 function saveDay(i){
 const r=store.facilities[facilitySel.value].rooms[i];
-const d=getDayIndex(r.start);
+const d=dayIndex(r.start);
 if(!r.days[d])r.days[d]={};
-const inputs=document.querySelectorAll("#roomDetail input");
-const t=Number(inputs[0].value);
-const rh=Number(inputs[1].value);
-const co2=inputs[2].value;
+const t=Number(document.getElementById("logT").value);
+const rh=Number(document.getElementById("logRH").value);
+const co2=document.getElementById("logCO2").value;
 if(!t||!rh)return alert("Temp & RH required");
 r.days[d].day={
 t,rh,co2,
 vpd:calcVPD(t,rh),
-ts:new Date().toISOString()
+ts:new Date().toISOString(),
+locked:true
 };
 save();openRoom(i);
+}
+function editLog(i){
+const r=store.facilities[facilitySel.value].rooms[i];
+const d=dayIndex(r.start);
+r.days[d].day.locked=false;
+save();openRoom(i);
+}
+
+let chart=null;
+function toggleChart(){
+const c=document.getElementById("vpdChart");
+c.classList.toggle("hidden");
+if(!c.classList.contains("hidden"))renderChart();
+}
+function renderChart(){
+if(chart)chart.destroy();
+const r=store.facilities[facilitySel.value].rooms.find(x=>x.name===document.querySelector("h2").textContent);
+const labels=[],actual=[],target=[];
+const today=dayIndex(r.start);
+for(let i=0;i<=today;i++){
+labels.push(`Day ${i+1}`);
+const w=Math.min(8,Math.floor(i/7));
+target.push(calcVPD(r.sop.weeks[w].day.t,r.sop.weeks[w].day.rh));
+actual.push(r.days[i]?.day?.vpd ?? (actual.length?actual[actual.length-1]:null));
+}
+chart=new Chart(vpdChart,{
+type:"line",
+data:{labels,datasets:[
+{label:"Target VPD",data:target,borderColor:"#111",borderDash:[4,4]},
+{label:"Actual VPD",data:actual,borderColor:"#16a34a"}
+]},
+options:{responsive:true}
+});
 }
 
 function deleteRoom(i){
@@ -277,7 +320,6 @@ if(!confirm("Delete room?"))return;
 store.facilities[facilitySel.value].rooms.splice(i,1);
 save();back();
 }
-
 function back(){
 roomView.classList.add("hidden");
 dashboard.classList.remove("hidden");
@@ -303,27 +345,23 @@ facilityManager.innerHTML=html;
 facilityManager.classList.remove("hidden");
 dashboard.classList.add("hidden");
 }
-
 function closeFacilityManager(){
 facilityManager.classList.add("hidden");
 dashboard.classList.remove("hidden");
 renderFacilities();renderRooms();
 }
-
 function addFacility(){
 const n=prompt("Facility name?");
 if(!n||store.facilities[n])return;
 store.facilities[n]={address:"",rooms:[]};
 save();openFacilityManager();
 }
-
-function renameFacility(oldName,newName){
-if(oldName===newName||store.facilities[newName])return;
-store.facilities[newName]=store.facilities[oldName];
-delete store.facilities[oldName];
+function renameFacility(o,n){
+if(o===n||store.facilities[n])return;
+store.facilities[n]=store.facilities[o];
+delete store.facilities[o];
 save();openFacilityManager();
 }
-
 function deleteFacility(n){
 if(store.facilities[n].rooms.length>0)return alert("Remove rooms first");
 if(!confirm("Delete facility?"))return;
