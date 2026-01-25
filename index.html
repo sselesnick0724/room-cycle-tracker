@@ -14,18 +14,17 @@ label{font-weight:600;display:block;margin-top:8px}
 select,input,button{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
 button{background:#2563eb;color:#fff;border:none;font-weight:700}
 button.secondary{background:#374151}
-button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
 button.small{padding:6px;font-size:13px}
-button.danger{background:#b91c1c}
-.small{font-size:13px;color:#555}
 .hidden{display:none}
 .row{display:flex;gap:12px}
 .col{flex:1}
-.sop-badge{display:inline-block;background:#111827;color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;margin-bottom:6px}
+.small{font-size:13px;color:#555}
 
 .temp-blue{color:#2563eb;font-weight:700}
 .rh-red{color:#b91c1c;font-weight:700}
 .co2-yellow{color:#ca8a04;font-weight:700}
+.ppfd-orange{color:#ea580c;font-weight:700}
+
 .vpd-green{color:#16a34a;font-weight:800}
 .vpd-yellow{color:#ca8a04;font-weight:800}
 .vpd-red{color:#dc2626;font-weight:800}
@@ -41,12 +40,11 @@ button.danger{background:#b91c1c}
 <div class="card">
 <label>Facility</label>
 <select id="facility" onchange="renderRooms()"></select>
-<button class="secondary" onclick="openFacilityManager()">Manage Facilities</button>
 </div>
 
 <div class="card">
 <label>Active SOP</label>
-<select id="sopSelect"></select>
+<select id="sopSelect" onchange="setActiveSop(this.value)"></select>
 <button onclick="toggleSopEditor()">Create / Edit SOP</button>
 </div>
 
@@ -59,11 +57,6 @@ button.danger{background:#b91c1c}
 <input id="plantCount" type="number" placeholder="Plant count">
 <label>Start Date</label>
 <input id="startDate" type="date">
-<label>Light Schedule</label>
-<select id="lights">
-<option value="12">12 / 12</option>
-<option value="18">18 / 6</option>
-</select>
 <button onclick="addRoom()">Add Room</button>
 </div>
 
@@ -73,13 +66,6 @@ button.danger{background:#b91c1c}
 </div>
 
 </div>
-
-<div id="roomView" class="hidden">
-<button class="back" onclick="back()">← Back</button>
-<div id="roomDetail"></div>
-</div>
-
-<div id="facilityManager" class="hidden"></div>
 
 <script>
 /* ================= STORAGE ================= */
@@ -96,11 +82,13 @@ function save(){localStorage.setItem("RCT_PROD",JSON.stringify(store));}
 
 /* ================= VPD ================= */
 function calcVPD(tF,rh){
+  if(!tF || !rh) return "";
   const c=(tF-32)*5/9;
   const es=0.6108*Math.exp((17.27*c)/(c+237.3));
   return +(es*(1-rh/100)).toFixed(2);
 }
 function vpdClass(a,t){
+  if(a===""||t==="") return "";
   const d=Math.abs(a-t);
   if(d<=0.1)return"vpd-green";
   if(d<=0.25)return"vpd-yellow";
@@ -111,29 +99,19 @@ function vpdClass(a,t){
 if(!store.sops["True Leaf Fire"]){
 store.sops["True Leaf Fire"]={
 name:"True Leaf Fire",
-weeks:[
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:82,rh:72,co2:1000},night:{t:78,rh:70,co2:1000}},
-{day:{t:80,rh:68,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:78,rh:66,co2:1200},night:{t:70,rh:55,co2:1200}},
-{day:{t:77,rh:65,co2:1200},night:{t:68,rh:55,co2:1200}},
-{day:{t:74,rh:55,co2:800},night:{t:67,rh:40,co2:800}},
-{day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}},
-{day:{t:74,rh:50,co2:"Ambient"},night:{t:65,rh:35,co2:"Ambient"}}
-]};
+weeks:Array.from({length:9},()=>({
+day:{t:"",rh:"",co2:"",ppfd:""},
+night:{t:"",rh:"",co2:"",ppfd:""}
+}))
+};
 save();
 }
 
 /* ================= INIT ================= */
 const facilitySel=document.getElementById("facility");
-function renderFacilities(){
-facilitySel.innerHTML="";
 Object.keys(store.facilities).forEach(f=>{
 facilitySel.innerHTML+=`<option>${f}</option>`;
 });
-}
-renderFacilities();
 
 function loadSops(){
 sopSelect.innerHTML="";
@@ -143,40 +121,75 @@ sopSelect.innerHTML+=`<option ${s===store.activeSop?"selected":""}>${s}</option>
 }
 loadSops();
 
+function setActiveSop(name){
+store.activeSop=name;
+save();
+}
+
 /* ================= SOP EDITOR ================= */
 function toggleSopEditor(){
 sopEditor.classList.toggle("hidden");
 renderSopEditor();
 }
+
 function renderSopEditor(){
 const sop=store.sops[store.activeSop];
-let html=`<h3>${sop.name}</h3>`;
+let html=`
+<label>SOP Name</label>
+<input value="${sop.name}" onchange="renameSop(this.value)">
+`;
+
 sop.weeks.forEach((w,i)=>{
+const dv=calcVPD(w.day.t,w.day.rh);
+const nv=calcVPD(w.night.t,w.night.rh);
 html+=`
 <h4>Week ${i+1}</h4>
 <div class="row">
 <div class="col">
 <strong>Day</strong>
-<input value="${w.day.t}" oninput="editSop(${i},'day','t',this.value)">
-<input value="${w.day.rh}" oninput="editSop(${i},'day','rh',this.value)">
-<div class="vpd-green">VPD ${calcVPD(w.day.t,w.day.rh)}</div>
+<input placeholder="Temp" value="${w.day.t}" oninput="editSop(${i},'day','t',this.value)">
+<input placeholder="RH" value="${w.day.rh}" oninput="editSop(${i},'day','rh',this.value)">
+<input placeholder="CO₂" value="${w.day.co2}" oninput="editSop(${i},'day','co2',this.value)">
+<input placeholder="PPFD" value="${w.day.ppfd}" oninput="editSop(${i},'day','ppfd',this.value)">
+<div class="${dv?vpdClass(dv,dv):''}">${dv?`VPD ${dv}`:""}</div>
 </div>
+
 <div class="col">
 <strong>Night</strong>
-<input value="${w.night.t}" oninput="editSop(${i},'night','t',this.value)">
-<input value="${w.night.rh}" oninput="editSop(${i},'night','rh',this.value)">
-<div class="vpd-green">VPD ${calcVPD(w.night.t,w.night.rh)}</div>
+<input placeholder="Temp" value="${w.night.t}" oninput="editSop(${i},'night','t',this.value)">
+<input placeholder="RH" value="${w.night.rh}" oninput="editSop(${i},'night','rh',this.value)">
+<input placeholder="CO₂" value="${w.night.co2}" oninput="editSop(${i},'night','co2',this.value)">
+<input placeholder="PPFD" value="${w.night.ppfd}" oninput="editSop(${i},'night','ppfd',this.value)">
+<div class="${nv?vpdClass(nv,nv):''}">${nv?`VPD ${nv}`:""}</div>
 </div>
-</div>`;
+</div>
+`;
 });
+html+=`
+<button onclick="save()">Save SOP</button>
+<button class="secondary" onclick="toggleSopEditor()">Close</button>
+`;
 sopEditor.innerHTML=html;
 }
+
 function editSop(i,p,f,v){
-store.sops[store.activeSop].weeks[i][p][f]=Number(v);
-save();renderSopEditor();
+store.sops[store.activeSop].weeks[i][p][f]=v;
+save();
+renderSopEditor();
 }
 
-/* ================= ROOMS ================= */
+function renameSop(name){
+if(!name || name===store.activeSop) return;
+store.sops[name]=store.sops[store.activeSop];
+store.sops[name].name=name;
+delete store.sops[store.activeSop];
+store.activeSop=name;
+save();
+loadSops();
+renderSopEditor();
+}
+
+/* ================= ROOMS (unchanged) ================= */
 function addRoom(){
 const fac=facilitySel.value;
 const start=new Date(startDate.value).getTime();
@@ -185,7 +198,6 @@ store.facilities[fac].rooms.push({
 name:roomName.value||"Room",
 strain:strain.value||"",
 plants:plantCount.value||0,
-lights:lights.value,
 start,
 sopName:store.activeSop,
 sop:JSON.parse(JSON.stringify(store.sops[store.activeSop])),
@@ -204,172 +216,23 @@ store.facilities[facilitySel.value].rooms.forEach((r,i)=>{
 const d=dayIndex(r.start);
 const w=Math.min(8,Math.floor(d/7));
 const t=r.sop.weeks[w].day;
+const vpd=calcVPD(t.t,t.rh);
 rooms.innerHTML+=`
 <div class="card">
-<div class="sop-badge">${r.sopName}</div>
 <strong>${r.name}</strong>
 <div class="small">${r.strain}</div>
 <div class="small">Week ${w+1} · Day ${d+1}</div>
 <div>
-<span class="temp-blue">${t.t}°F</span> ·
-<span class="rh-red">${t.rh}%</span> ·
-<span class="co2-yellow">${t.co2}</span> ·
-<span class="vpd-green">VPD ${calcVPD(t.t,t.rh)}</span>
+<span class="temp-blue">${t.t||""}</span> ·
+<span class="rh-red">${t.rh||""}</span> ·
+<span class="co2-yellow">${t.co2||""}</span> ·
+<span class="ppfd-orange">${t.ppfd||""}</span>
+${vpd?` · <span class="vpd-green">VPD ${vpd}</span>`:""}
 </div>
-<button onclick="openRoom(${i})">View Room</button>
 </div>`;
 });
 }
 
-/* ================= ROOM VIEW ================= */
-function openRoom(i){
-dashboard.classList.add("hidden");
-roomView.classList.remove("hidden");
-const r=store.facilities[facilitySel.value].rooms[i];
-const d=dayIndex(r.start);
-const w=Math.min(8,Math.floor(d/7));
-const target=r.sop.weeks[w].day;
-const log=r.days[d]?.day||{};
-roomDetail.innerHTML=`
-<h2>${r.name}</h2>
-<div class="small">${r.strain}</div>
-
-<div class="card">
-<strong>Target</strong><br>
-<span class="temp-blue">${target.t}°F</span> /
-<span class="rh-red">${target.rh}%</span> /
-${target.co2} ·
-<span class="vpd-green">VPD ${calcVPD(target.t,target.rh)}</span>
-</div>
-
-<div class="card">
-<strong>Actual</strong><br>
-${log.ts?`<div class="small">Logged ${new Date(log.ts).toLocaleString()}</div>`:""}
-<input ${log.locked?"disabled":""} id="logT" placeholder="Temp" value="${log.t||""}">
-<input ${log.locked?"disabled":""} id="logRH" placeholder="RH" value="${log.rh||""}">
-<input ${log.locked?"disabled":""} id="logCO2" placeholder="CO₂" value="${log.co2||""}">
-${log.vpd?`<div class="${vpdClass(log.vpd,calcVPD(target.t,target.rh))}">VPD ${log.vpd}</div>`:""}
-${log.locked
-? `<button class="secondary" onclick="editLog(${i})">Edit ✍️</button>`
-: `<button onclick="saveDay(${i})">Save</button>`
-}
-</div>
-
-<div class="card">
-<button onclick="toggleChart()">📊 View Charts</button>
-<canvas id="vpdChart" class="hidden"></canvas>
-</div>
-
-<div class="card">
-<button class="danger" onclick="deleteRoom(${i})">Delete Room</button>
-</div>`;
-}
-
-function saveDay(i){
-const r=store.facilities[facilitySel.value].rooms[i];
-const d=dayIndex(r.start);
-if(!r.days[d])r.days[d]={};
-const t=Number(document.getElementById("logT").value);
-const rh=Number(document.getElementById("logRH").value);
-const co2=document.getElementById("logCO2").value;
-if(!t||!rh)return alert("Temp & RH required");
-r.days[d].day={
-t,rh,co2,
-vpd:calcVPD(t,rh),
-ts:new Date().toISOString(),
-locked:true
-};
-save();openRoom(i);
-}
-function editLog(i){
-const r=store.facilities[facilitySel.value].rooms[i];
-const d=dayIndex(r.start);
-r.days[d].day.locked=false;
-save();openRoom(i);
-}
-
-let chart=null;
-function toggleChart(){
-const c=document.getElementById("vpdChart");
-c.classList.toggle("hidden");
-if(!c.classList.contains("hidden"))renderChart();
-}
-function renderChart(){
-if(chart)chart.destroy();
-const r=store.facilities[facilitySel.value].rooms.find(x=>x.name===document.querySelector("h2").textContent);
-const labels=[],actual=[],target=[];
-const today=dayIndex(r.start);
-for(let i=0;i<=today;i++){
-labels.push(`Day ${i+1}`);
-const w=Math.min(8,Math.floor(i/7));
-target.push(calcVPD(r.sop.weeks[w].day.t,r.sop.weeks[w].day.rh));
-actual.push(r.days[i]?.day?.vpd ?? (actual.length?actual[actual.length-1]:null));
-}
-chart=new Chart(vpdChart,{
-type:"line",
-data:{labels,datasets:[
-{label:"Target VPD",data:target,borderColor:"#111",borderDash:[4,4]},
-{label:"Actual VPD",data:actual,borderColor:"#16a34a"}
-]},
-options:{responsive:true}
-});
-}
-
-function deleteRoom(i){
-if(!confirm("Delete room?"))return;
-store.facilities[facilitySel.value].rooms.splice(i,1);
-save();back();
-}
-function back(){
-roomView.classList.add("hidden");
-dashboard.classList.remove("hidden");
-renderRooms();
-}
-
-/* ================= FACILITIES ================= */
-function openFacilityManager(){
-let html=`<div class="card"><h3>Facilities</h3>`;
-Object.entries(store.facilities).forEach(([n,f])=>{
-html+=`
-<div class="card">
-<input value="${n}" onchange="renameFacility('${n}',this.value)">
-<input value="${f.address}" placeholder="Address" onchange="f.address=this.value;save()">
-<button class="danger" onclick="deleteFacility('${n}')">Delete</button>
-</div>`;
-});
-html+=`
-<button onclick="addFacility()">Add Facility</button>
-<button class="secondary" onclick="closeFacilityManager()">Close</button>
-</div>`;
-facilityManager.innerHTML=html;
-facilityManager.classList.remove("hidden");
-dashboard.classList.add("hidden");
-}
-function closeFacilityManager(){
-facilityManager.classList.add("hidden");
-dashboard.classList.remove("hidden");
-renderFacilities();renderRooms();
-}
-function addFacility(){
-const n=prompt("Facility name?");
-if(!n||store.facilities[n])return;
-store.facilities[n]={address:"",rooms:[]};
-save();openFacilityManager();
-}
-function renameFacility(o,n){
-if(o===n||store.facilities[n])return;
-store.facilities[n]=store.facilities[o];
-delete store.facilities[o];
-save();openFacilityManager();
-}
-function deleteFacility(n){
-if(store.facilities[n].rooms.length>0)return alert("Remove rooms first");
-if(!confirm("Delete facility?"))return;
-delete store.facilities[n];
-save();openFacilityManager();
-}
-
-/* ================= START ================= */
 renderRooms();
 </script>
 
