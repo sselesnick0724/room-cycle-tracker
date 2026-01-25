@@ -15,6 +15,7 @@ button{background:#2563eb;color:#fff;border:none;font-weight:700}
 button.secondary{background:#374151}
 button.danger{background:#b91c1c}
 button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
+button.small{padding:6px;font-size:13px}
 .hidden{display:none}
 .row{display:flex;gap:12px}
 .col{flex:1}
@@ -23,7 +24,6 @@ button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
 .temp{color:#2563eb;font-weight:700}
 .rh{color:#b91c1c;font-weight:700}
 .co2{color:#ca8a04;font-weight:700}
-.ppfd{color:#6b7280;font-weight:700}
 
 .vpd-green{color:#16a34a;font-weight:800}
 .vpd-yellow{color:#ca8a04;font-weight:800}
@@ -39,11 +39,19 @@ button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
 
 <div id="dashboard">
 
+<!-- FACILITY -->
 <div class="card">
 <label>Facility</label>
 <select id="facility"></select>
+<button onclick="renderRooms()">View Rooms</button>
+
+<h4>Add Facility</h4>
+<input id="newFacilityName" placeholder="Facility name">
+<input id="newFacilityAddress" placeholder="Facility address">
+<button class="secondary" onclick="addFacility()">Add Facility</button>
 </div>
 
+<!-- SOP -->
 <div class="card">
 <label>Active SOP</label>
 <select id="sopSelect"></select>
@@ -52,15 +60,18 @@ button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
 
 <div id="sopEditor" class="card hidden"></div>
 
+<!-- ADD ROOM -->
 <div class="card">
 <h3>Add Room</h3>
 <input id="roomName" placeholder="Room name">
+<input id="strain" placeholder="Strain(s)">
 <input id="plantCount" type="number" placeholder="Plant count">
 <label>Start Date</label>
 <input id="startDate" type="date">
 <button onclick="addRoom()">Add Room</button>
 </div>
 
+<!-- ROOMS -->
 <div class="card">
 <h3>Rooms</h3>
 <div id="rooms"></div>
@@ -68,15 +79,20 @@ button.back{background:#e5e7eb;color:#111;margin-bottom:12px}
 
 </div>
 
+<!-- ROOM VIEW -->
 <div id="roomView" class="hidden">
-<button class="back" onclick="back()">← Back to Rooms</button>
+<button class="back" onclick="back()">← Back</button>
 <div id="roomDetail"></div>
 </div>
 
 <script>
 /* ================= STORAGE ================= */
 let store = JSON.parse(localStorage.getItem("RCT_PROD")) || {
-  facilities:{ "True Leaf":[], "Motor City":[], "El Roya":[] },
+  facilities:{
+    "True Leaf":{address:"",rooms:[]},
+    "Motor City":{address:"",rooms:[]},
+    "El Roya":{address:"",rooms:[]}
+  },
   sops:{},
   activeSop:null
 };
@@ -115,30 +131,30 @@ save();
 }
 
 /* ================= INIT ================= */
-facility.innerHTML=Object.keys(store.facilities)
-.map(f=>`<option>${f}</option>`).join("");
-
-function loadSops(){
-sopSelect.innerHTML="";
-Object.keys(store.sops).forEach(s=>{
-  sopSelect.innerHTML+=`<option>${s}</option>`;
-});
+function init(){
+facility.innerHTML=Object.keys(store.facilities).map(f=>`<option>${f}</option>`).join("");
+sopSelect.innerHTML=Object.keys(store.sops).map(s=>`<option>${s}</option>`).join("");
 sopSelect.value=store.activeSop;
 }
-loadSops();
+init();
+
+/* ================= FACILITY ================= */
+function addFacility(){
+const n=newFacilityName.value.trim();
+if(!n||store.facilities[n])return alert("Invalid or duplicate facility");
+store.facilities[n]={address:newFacilityAddress.value.trim(),rooms:[]};
+newFacilityName.value="";newFacilityAddress.value="";
+save();init();
+}
 
 /* ================= SOP EDITOR ================= */
 function toggleSopEditor(){
-const e=document.getElementById("sopEditor");
-e.classList.toggle("hidden");
-if(!e.classList.contains("hidden"))renderSopEditor();
+sopEditor.classList.toggle("hidden");
+if(!sopEditor.classList.contains("hidden"))renderSopEditor();
 }
-
 function renderSopEditor(){
-let sop=store.sops[store.activeSop];
-let html=`<label>SOP Name</label>
-<input id="sopName" value="${sop.name}">`;
-
+const sop=store.sops[store.activeSop];
+let html=`<label>SOP Name</label><input id="sopName" value="${sop.name}">`;
 sop.weeks.forEach((w,i)=>{
 html+=`
 <h4>Week ${i+1}</h4>
@@ -147,41 +163,29 @@ html+=`
 <strong>Day</strong>
 <input value="${w.day.t}" oninput="updateSop(${i},'day','t',this.value)">
 <input value="${w.day.rh}" oninput="updateSop(${i},'day','rh',this.value)">
-<input value="${w.day.co2}" oninput="updateSop(${i},'day','co2',this.value)">
-<div id="dv${i}" class="vpd-green">VPD ${calcVPD(w.day.t,w.day.rh)}</div>
+<div>VPD ${calcVPD(w.day.t,w.day.rh)}</div>
 </div>
 <div class="col">
 <strong>Night</strong>
 <input value="${w.night.t}" oninput="updateSop(${i},'night','t',this.value)">
 <input value="${w.night.rh}" oninput="updateSop(${i},'night','rh',this.value)">
-<input value="${w.night.co2}" oninput="updateSop(${i},'night','co2',this.value)">
-<div id="nv${i}" class="vpd-green">VPD ${calcVPD(w.night.t,w.night.rh)}</div>
+<div>VPD ${calcVPD(w.night.t,w.night.rh)}</div>
 </div>
 </div>`;
 });
-
 html+=`<button onclick="saveSOP()">Save SOP</button>
 <button class="secondary" onclick="toggleSopEditor()">Cancel</button>`;
-
-document.getElementById("sopEditor").innerHTML=html;
+sopEditor.innerHTML=html;
 }
-
 function updateSop(i,p,f,v){
-store.sops[store.activeSop].weeks[i][p][f]=Number(v)||v;
-const w=store.sops[store.activeSop].weeks[i][p];
-if(w.t&&w.rh){
-document.getElementById((p==="day"?"dv":"nv")+i).textContent=
-"VPD "+calcVPD(w.t,w.rh);
-}
+store.sops[store.activeSop].weeks[i][p][f]=Number(v);
 save();
 }
-
 function saveSOP(){
-const n=document.getElementById("sopName").value.trim();
+const n=sopName.value.trim();
 store.sops[n]=JSON.parse(JSON.stringify(store.sops[store.activeSop]));
-store.sops[n].name=n;
 store.activeSop=n;
-save();loadSops();toggleSopEditor();
+save();init();toggleSopEditor();
 }
 
 /* ================= TIME ================= */
@@ -193,8 +197,9 @@ function addRoom(){
 const f=facility.value;
 const sd=new Date(startDate.value).getTime();
 if(!sd)return alert("Start date required");
-store.facilities[f].push({
+store.facilities[f].rooms.push({
 name:roomName.value||"Room",
+strain:strain.value||"",
 plants:plantCount.value||0,
 start:sd,
 sopName:store.activeSop,
@@ -206,7 +211,7 @@ save();renderRooms();
 
 function renderRooms(){
 rooms.innerHTML="";
-store.facilities[facility.value].forEach((r,i)=>{
+(store.facilities[facility.value]?.rooms||[]).forEach((r,i)=>{
 const w=weekFrom(r.start);
 const d=dayFrom(r.start);
 const t=r.sop.weeks[w-1].day;
@@ -214,11 +219,11 @@ rooms.innerHTML+=`
 <div class="card">
 <div class="badge">${r.sopName}</div>
 <strong>${r.name}</strong>
+${r.strain?`<div class="small">Strain: ${r.strain}</div>`:""}
 <div class="small">Week ${w} · Day ${d}</div>
 <div>
 <span class="temp">${t.t}°F</span> ·
 <span class="rh">${t.rh}%</span> ·
-${t.co2} ·
 <span class="vpd-green">VPD ${calcVPD(t.t,t.rh)}</span>
 </div>
 <button onclick="openRoom('${facility.value}',${i})">View Room</button>
@@ -226,60 +231,59 @@ ${t.co2} ·
 });
 }
 
-/* ================= ROOM VIEW ================= */
+/* ================= ROOM VIEW + LOGGING ================= */
 function openRoom(f,i){
 dashboard.classList.add("hidden");
 roomView.classList.remove("hidden");
-const r=store.facilities[f][i];
+const r=store.facilities[f].rooms[i];
+const today=new Date().toISOString().split("T")[0];
+r.logs[today]=r.logs[today]||{day:{},night:{}};
+let html=`<h2>${r.name}</h2><div class="small">Strain: ${r.strain||"—"}</div>`;
+["day","night"].forEach(p=>{
+const l=r.logs[today][p];
 const w=weekFrom(r.start)-1;
-const t=r.sop.weeks[w].day;
-const targetVPD=calcVPD(t.t,t.rh);
-
-roomDetail.innerHTML=`
-<h2>${r.name}</h2>
+const t=r.sop.weeks[w][p];
+const av=l.temp&&l.rh?calcVPD(l.temp,l.rh):null;
+html+=`
 <div class="card">
-<h3>VPD</h3>
-<div style="text-align:center;font-size:40px;font-weight:800">${targetVPD}</div>
+<h4>${p.toUpperCase()}</h4>
 <div class="row">
-<div class="col temp">Temp ${t.t}°F</div>
-<div class="col rh">RH ${t.rh}%</div>
-<div class="col co2">CO₂ ${t.co2}</div>
-<div class="col vpd-green">VPD ${targetVPD}</div>
-<div class="col ppfd">PPFD —</div>
+<div class="col">
+<strong>Target</strong><br>
+${t.t}°F / ${t.rh}%<br>
+VPD ${calcVPD(t.t,t.rh)}
+</div>
+<div class="col">
+<strong>Actual</strong>
+<input placeholder="Temp" value="${l.temp||""}" ${l.locked?"disabled":""} oninput="updateLog('${f}',${i},'${today}','${p}','temp',this.value)">
+<input placeholder="RH" value="${l.rh||""}" ${l.locked?"disabled":""} oninput="updateLog('${f}',${i},'${today}','${p}','rh',this.value)">
+<input placeholder="CO₂" value="${l.co2||""}" ${l.locked?"disabled":""} oninput="updateLog('${f}',${i},'${today}','${p}','co2',this.value)">
+${av?`<div class="${vpdClass(av,calcVPD(t.t,t.rh))}">VPD ${av}</div>`:""}
+${l.locked
+? `<button class="secondary" onclick="unlockLog('${f}',${i},'${today}','${p}')">Edit</button>`
+: `<button onclick="saveLog('${f}',${i},'${today}','${p}')">Save</button>`}
 </div>
 </div>
-
-<div class="card">
-<button onclick="editRoom('${f}',${i})">Edit Room</button>
-<button class="danger" onclick="deleteRoom('${f}',${i})">Delete Room</button>
 </div>`;
+});
+roomDetail.innerHTML=html;
 }
 
-function editRoom(f,i){
-const r=store.facilities[f][i];
-const d=document.createElement("div");
-d.className="card";
-d.innerHTML=`
-<label>Start Date</label>
-<input type="date" id="editStart" value="${new Date(r.start).toISOString().split("T")[0]}">
-<label>SOP</label>
-<select id="editSop">${Object.keys(store.sops).map(s=>`<option ${s===r.sopName?"selected":""}>${s}</option>`).join("")}</select>
-<button onclick="saveRoomEdit('${f}',${i})">Save</button>`;
-roomDetail.appendChild(d);
+function updateLog(f,i,d,p,field,val){
+store.facilities[f].rooms[i].logs[d][p][field]=Number(val);
+save();
 }
-
-function saveRoomEdit(f,i){
-const r=store.facilities[f][i];
-r.start=new Date(document.getElementById("editStart").value).getTime();
-r.sopName=document.getElementById("editSop").value;
-r.sop=JSON.parse(JSON.stringify(store.sops[r.sopName]));
+function saveLog(f,i,d,p){
+const l=store.facilities[f].rooms[i].logs[d][p];
+if(l.temp==null||l.rh==null||l.co2==null)return alert("Enter Temp, RH, CO₂");
+l.vpd=calcVPD(l.temp,l.rh);
+l.locked=true;
+l.ts=new Date().toISOString();
 save();openRoom(f,i);
 }
-
-function deleteRoom(f,i){
-if(!confirm("Delete this room and all data?"))return;
-store.facilities[f].splice(i,1);
-save();back();
+function unlockLog(f,i,d,p){
+store.facilities[f].rooms[i].logs[d][p].locked=false;
+save();openRoom(f,i);
 }
 
 function back(){
@@ -287,9 +291,6 @@ roomView.classList.add("hidden");
 dashboard.classList.remove("hidden");
 renderRooms();
 }
-
-/* ================= START ================= */
-renderRooms();
 </script>
 
 </body>
